@@ -227,14 +227,13 @@ def generate_answer(safe_prompt: str) -> tuple[str, str]:
 # ── 교정 후 위험도 재산출 ────────────────────────────────
 def recalculate_score(original_score: int, answers: list[str]) -> int:
     """
-    사용자 답변 기반으로 교정 후 위험도 재산출
-    '아니오' 답변이 많을수록(실제 공격 의도 없음) 점수 하락
+    사용자 답변 기반으로 교정 후 위험도 재산출 (0~100).
+    '아니오'·부정적 답은 위험 완화로 더 크게 반영, 긍정(예/학습 목적 등)은 보조적으로 반영.
     """
     neg_count = sum(1 for a in answers if "아니오" in a or "없" in a or "no" in a.lower())
     pos_count = sum(1 for a in answers if "예" in a or "있" in a or "yes" in a.lower())
-    # 긍정 답변(전문가, 학습 목적)은 감소 / 부정 답변(공격 아님, 배포 안 함)도 감소
     reduction = (neg_count * 8) + (pos_count * 4)
-    return max(10, original_score - reduction)
+    return max(0, min(100, original_score - reduction))
 
 
 # ── 전체 파이프라인 실행 ──────────────────────────────────
