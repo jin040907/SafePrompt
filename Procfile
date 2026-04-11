@@ -1,2 +1,2 @@
-# Heroku / Railway(Nixpacks) 등 — $PORT 가 셸 치환 안 될 때 대비해 start.sh 사용
-web: sh start.sh
+# Railway Nixpacks 등 — uvicorn CLI 에 $PORT 넣지 말고 Python 진입점 사용
+web: python serve.py

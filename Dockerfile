@@ -6,11 +6,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py pipeline.py start.sh ./
-RUN chmod +x start.sh
+COPY server.py pipeline.py serve.py ./
 
 ENV PORT=8000
 EXPOSE 8000
 
-# PORT 는 런타임에 환경 변수로 주입 (start.sh에서 읽음)
-CMD ["./start.sh"]
+# 셸 $PORT 미전개 환경 대비: serve.py 가 os.environ["PORT"] 사용
+CMD ["python", "serve.py"]
