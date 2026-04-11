@@ -3,7 +3,11 @@ Step 5. Safe Prompt FastAPI 서버
 설치: pip install -r requirements.txt
 한 번에 실행(API+프론트): npm install && npm run dev  → API :8000, UI http://localhost:5173
 API만: python3 -m uvicorn server:app --reload --port 8000
+
+배포 시 CORS: 환경 변수 CORS_ORIGINS(쉼표 구분) 또는 FRONTEND_URL 에 Vercel 등 프론트 URL 을 넣으세요.
 """
+
+import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,12 +22,30 @@ from pipeline import (
     recalculate_score,
 )
 
+
+def _cors_allow_origins() -> list[str]:
+    """로컬 개발 오리진 + CORS_ORIGINS / FRONTEND_URL(프로덕션 프론트)."""
+    origins: set[str] = {
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    }
+    for chunk in os.getenv("CORS_ORIGINS", "").split(","):
+        u = chunk.strip().rstrip("/")
+        if u:
+            origins.add(u)
+    front = os.getenv("FRONTEND_URL", "").strip().rstrip("/")
+    if front:
+        origins.add(front)
+    return list(origins)
+
+
 app = FastAPI(title="Safe Prompt API")
 
-# CORS 설정 (React 개발 서버 허용)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=_cors_allow_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )

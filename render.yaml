@@ -1,0 +1,18 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# 저장소 연결 후 Blueprint 로 가져오거나, 대시보드에서 수동으로 동일 값 입력
+
+services:
+  - type: web
+    name: safe-prompt-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CLOVA_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+        # 예: https://safe-prompt.vercel.app (Vercel 배포 후 넣기)

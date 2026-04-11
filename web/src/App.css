@@ -184,6 +184,138 @@
   border-radius: var(--radius-sm);
 }
 
+.card__hint {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.how-it-works {
+  margin: 0 0 1.1rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  overflow: hidden;
+}
+
+.how-it-works__summary {
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  list-style: none;
+}
+
+.how-it-works__summary::-webkit-details-marker {
+  display: none;
+}
+
+.how-it-works__summary::after {
+  content: '▼';
+  float: right;
+  font-size: 0.65rem;
+  opacity: 0.6;
+  transition: transform 0.15s;
+}
+
+.how-it-works[open] .how-it-works__summary::after {
+  transform: rotate(-180deg);
+}
+
+.how-it-works__list {
+  margin: 0;
+  padding: 0.35rem 0.85rem 0.85rem 1.65rem;
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+
+.how-it-works__list li {
+  margin-bottom: 0.35rem;
+}
+
+.example-chips {
+  margin: 0 0 1rem;
+}
+
+.example-chips__label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  margin-bottom: 0.45rem;
+}
+
+.example-chips__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.example-chip {
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-0);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.example-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.example-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.kbd-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+.kbd {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.68rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .banner {
   padding: 0.75rem 1rem;
   border-radius: var(--radius-md);

@@ -7,6 +7,11 @@ import {
   type ReconstructResponse,
 } from './api'
 import { RiskGauge } from './components/RiskGauge'
+import {
+  EXAMPLE_PROMPTS,
+  HOW_IT_WORKS,
+  STEP_HINTS,
+} from './onboarding'
 import './App.css'
 
 type Step = 'input' | 'questions' | 'review' | 'result'
@@ -50,6 +55,23 @@ function CardTitle({ step, children }: { step: number; children: ReactNode }) {
       </span>
       <h2 className="card__title-text">{children}</h2>
     </div>
+  )
+}
+
+function CardHint({ children }: { children: ReactNode }) {
+  return <p className="card__hint">{children}</p>
+}
+
+function HowItWorks() {
+  return (
+    <details className="how-it-works">
+      <summary className="how-it-works__summary">처음이신가요? 이용 순서 보기</summary>
+      <ol className="how-it-works__list">
+        {HOW_IT_WORKS.map((line, i) => (
+          <li key={i}>{line}</li>
+        ))}
+      </ol>
+    </details>
   )
 }
 
@@ -213,6 +235,10 @@ export default function App() {
       <div className="app-body">
         <StepPills step={step} />
 
+        <p className="sr-only" aria-live="polite">
+          {loading ? '요청을 처리하고 있습니다. 잠시만 기다려 주세요.' : ''}
+        </p>
+
         {error ? (
           <div className="banner banner--err" role="alert">
             {error}
@@ -223,14 +249,45 @@ export default function App() {
           {step === 'input' && (
             <section className="card">
               <CardTitle step={1}>질문 입력</CardTitle>
+              <CardHint>{STEP_HINTS.input}</CardHint>
+              <HowItWorks />
+              <div className="example-chips" role="group" aria-label="예시 질문">
+                <span className="example-chips__label">예시로 채우기</span>
+                <div className="example-chips__row">
+                  {EXAMPLE_PROMPTS.map((ex) => (
+                    <button
+                      key={ex.id}
+                      type="button"
+                      className="example-chip"
+                      disabled={loading}
+                      onClick={() => setUserInput(ex.text)}
+                    >
+                      {ex.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <textarea
                 className="textarea"
+                id="main-question"
                 rows={5}
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
-                placeholder="무엇이든 물어보세요."
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return
+                  if (!(e.ctrlKey || e.metaKey)) return
+                  e.preventDefault()
+                  if (canGoQuestions && !loading) void handleClassify()
+                }}
+                placeholder="예: 위와 같이 궁금한 내용을 한글로 적어 주세요."
                 disabled={loading}
+                aria-describedby="hint-input-shortcut"
               />
+              <p id="hint-input-shortcut" className="kbd-hint">
+                입력 후 <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">Enter</kbd> (Mac은{' '}
+                <kbd className="kbd">⌘</kbd> + <kbd className="kbd">Enter</kbd>)로도 분석을 시작할 수
+                있어요.
+              </p>
               <div className="actions">
                 <button
                   type="button"
@@ -247,6 +304,7 @@ export default function App() {
           {step === 'questions' && classify && (
             <section className="card">
               <CardTitle step={2}>분석 · 의도 확인</CardTitle>
+              <CardHint>{STEP_HINTS.questions}</CardHint>
               <table className="info-table">
                 <tbody>
                   <tr>
@@ -290,6 +348,7 @@ export default function App() {
           {step === 'review' && recon && (
             <section className="card">
               <CardTitle step={3}>프롬프트 검토</CardTitle>
+              <CardHint>{STEP_HINTS.review}</CardHint>
               <div className="compare compare--3">
                 <div>
                   <p className="compare__label">원본 프롬프트</p>
@@ -352,6 +411,7 @@ export default function App() {
           {step === 'result' && result && (
             <section className="card">
               <CardTitle step={4}>답변</CardTitle>
+              <CardHint>{STEP_HINTS.result}</CardHint>
               <p className="meta">
                 모델: <strong>{result.model}</strong>
               </p>
@@ -375,7 +435,9 @@ export default function App() {
           )}
         </main>
 
-        <footer className="footer">입력·답변은 저장하지 않습니다.</footer>
+        <footer className="footer">
+          개인 질문·답변은 서버에 저장되지 않습니다. 공공 PC에서는 사용 후 브라우저 탭을 닫아 주세요.
+        </footer>
       </div>
     </div>
   )

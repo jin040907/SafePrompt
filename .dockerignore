@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+node_modules
+web/node_modules
+web/dist
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+*.md
+SafePrompt*.pdf
+*.docx
