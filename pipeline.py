@@ -133,38 +133,111 @@ def _parse_questions_from_model_text(text: str) -> list[str]:
     for ln in lines:
         ln = re.sub(r"^(?:질문\s*)?\d+[\.\)]\s*", "", ln, flags=re.IGNORECASE).strip()
         ln = re.sub(r"^[-•*]\s+", "", ln).strip()
+        # 서두 제거 (모델이 한 줄 설명을 붙이는 경우)
+        ln = re.sub(
+            r"^(?:다음은|아래는|질문\s*\d*\s*[:\.]?|확인\s*질문\s*[:\.]?)\s*",
+            "",
+            ln,
+            flags=re.IGNORECASE,
+        ).strip()
         if ln:
             out.append(ln)
+
+    # 한 줄에 물음표만 여러 개인 경우 (줄바꿈 없이 연속 질문)
+    if len(out) == 1 and out[0].count("?") + out[0].count("？") >= 2:
+        blob = out[0]
+        split_q = re.split(r"(?<=[?？])\s+", blob)
+        if len(split_q) > 1:
+            out = [s.strip() for s in split_q if s.strip()]
+
     return out[:10]
 
 
-def _groq_five_questions(user_input: str, risk_type: str) -> list[str] | None:
-    prompt = f"""사용자 질문: {user_input}
-위험 유형: {risk_type}
+def _split_questions_by_marks(raw: str) -> list[str]:
+    """파싱 실패 시 물음표 기준으로 질문 후보 분리"""
+    t = raw.strip()
+    if not t:
+        return []
+    parts = re.split(r"(?<=[?？])\s+", t)
+    out: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if len(p) < 8:
+            continue
+        if not p.endswith(("?", "？")):
+            p = p + "?"
+        out.append(p)
+    return out[:8]
 
-의도 확인용 질문을 예 또는 아니오로 답할 수 있게 정확히 5개 작성해.
-규칙: 한 줄에 질문 하나만. 번호·글머리표·빈 줄 금지. 질문 문장만 5줄 출력. 다른 말 금지."""
-    result, _ = call_groq([{"role": "user", "content": prompt}], max_tokens=600)
+
+def _groq_five_questions(user_input: str, risk_type: str) -> list[str] | None:
+    prompt = f"""너는 AI 안전 검토를 돕는 조력자다.
+
+사용자가 실제로 한 질문(원문):
+\"\"\"{user_input}\"\"\"
+
+위험 유형 분류: {risk_type}
+
+위 **사용자 질문의 주제·목적**을 구체적으로 짚어서, 의도를 확인할 수 있는 질문을 정확히 5개 만들어라.
+- 각 질문은 예/아니오로 답할 수 있어야 한다.
+- **반드시 사용자 질문에 나온 주제·상황을 질문 안에 한 번 이상 반영**한다(똑같은 일반 문구만 5개 반복 금지).
+- 한 줄에 질문 하나. 번호·글머리표·빈 줄 금지.
+- 서두·설명·인사 없이 질문 다섯 줄만 출력한다."""
+    result, _ = call_groq([{"role": "user", "content": prompt}], max_tokens=700)
     if not result:
         return None
     parsed = _parse_questions_from_model_text(result)
-    return parsed if parsed else None
+    if len(parsed) >= 5:
+        return parsed[:5]
+    if len(parsed) < 5:
+        extra = _split_questions_by_marks(result)
+        seen = {p.strip() for p in parsed}
+        for e in extra:
+            if e.strip() not in seen and e.strip():
+                seen.add(e.strip())
+                parsed.append(e.strip())
+            if len(parsed) >= 5:
+                break
+    return parsed[:5] if len(parsed) >= 5 else (parsed if parsed else None)
 
 
-def _pad_questions_to_five(existing: list[str]) -> list[str]:
-    pool = [
-        "이 내용을 합법적인 교육·연구·업무 목적으로만 사용하실 건가요?",
-        "악의적 이용이나 실제 피해를 목적으로 하지 않으십니까?",
-        "전문가·허가된 맥락에서 다루는 주제가 맞나요?",
-        "생성된 정보를 무단 배포·남용할 계획은 없으신가요?",
-        "추가로 알려 줄 맥락이 있으면 한 줄로 적어 주세요. (없으면 '없음')",
+def _merge_unique_questions(*lists: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for lst in lists:
+        for q in lst:
+            s = (q or "").strip()
+            if not s or s in seen:
+                continue
+            seen.add(s)
+            out.append(s)
+            if len(out) >= 5:
+                return out
+    return out
+
+
+def _dynamic_fallback_questions(user_input: str, risk_type: str) -> list[str]:
+    """
+    API 실패 시에만 사용. 사용자 원문·유형을 문장에 넣어 매번 다른 말이 되게 함.
+    """
+    s = re.sub(r"\s+", " ", user_input.strip())
+    if len(s) > 100:
+        s = s[:99] + "…"
+    risk_note = {
+        "보안": "보안·취약점 정보를 악용하지 않는 선에서",
+        "윤리": "차별·편향을 조장하지 않는 선에서",
+        "편향": "특정 집단에 대한 편견을 키우지 않는 선에서",
+        "오남용": "금지된 용도로 쓰지 않는 선에서",
+        "안전": "안전 수칙을 지키는 선에서",
+    }.get(risk_type, "해당 분야의 윤리·정책을 지키는 선에서")
+
+    return [
+        f"지금 적으신 내용(「{s}」)에 대해, 합법적이고 윤리적으로 허용되는 범위에서 답을 얻으려는 것이 맞나요?",
+        f"이 질문은 '{risk_type}' 유형으로 분류되었는데, {risk_note} 답변이 필요한 상황이 맞나요?",
+        "악의적 이용·실제 피해·금지 행위를 목적으로 하지 않으십니까?",
+        "교육·연구·업무 등 정당한 맥락에서만 이 내용을 활용할 계획이신가요?",
+        "생성된 답을 무단 배포하거나 금지된 목적으로 재사용할 계획은 없으신가요?",
     ]
-    out = [q.strip() for q in existing if q.strip()]
-    i = 0
-    while len(out) < 5:
-        out.append(pool[i % len(pool)])
-        i += 1
-    return out[:5]
 
 
 def _reconstruction_is_trivial(out: str, original: str) -> bool:
@@ -255,14 +328,20 @@ def classify_risk(user_input: str) -> tuple[str, int]:
 
 # ── 2단계: 의도 확인 질문 생성 ────────────────────────────
 def generate_questions(user_input: str, risk_type: str) -> list[str]:
-    """위험 유형에 맞는 의도 확인 질문 5개 생성"""
-    info(f"HyperCLOVA X — [{risk_type}] 유형 맞춤 질문 생성 중...")
+    """위험 유형에 맞는 의도 확인 질문 5개 생성 (주제별로 달라지도록 Groq 우선)."""
+    info(f"의도 확인 질문 생성 — [{risk_type}] (Groq → HyperCLOVA 순)")
+
+    # 1) Groq 우선: 사용자 원문을 질문에 반영하도록 프롬프트 고정
+    gq = _groq_five_questions(user_input, risk_type)
+    if gq and len(gq) >= 5:
+        return gq[:5]
 
     prompt = f"""사용자가 다음 질문을 했어. 위험 유형은 '{risk_type}'야.
 
 사용자 질문: {user_input}
 
 이 질문의 의도를 파악하기 위한 확인 질문 5개를 만들어줘.
+- 사용자 질문에 나온 주제·상황을 질문 안에서 구체적으로 짚을 것(똑같은 일반 문구만 반복하지 말 것)
 - 예/아니오로 답할 수 있는 질문
 - 번호 없이 한 줄씩
 - 다른 말 없이 질문만 출력"""
@@ -271,30 +350,15 @@ def generate_questions(user_input: str, risk_type: str) -> list[str]:
         [{"role": "user", "content": prompt}],
         max_tokens=512,
     )
-    parsed: list[str] = _parse_questions_from_model_text(result) if result else []
+    clova_parsed: list[str] = _parse_questions_from_model_text(result) if result else []
 
-    if len(parsed) >= 5:
-        return parsed[:5]
+    merged = _merge_unique_questions(gq or [], clova_parsed)
+    if len(merged) >= 5:
+        return merged[:5]
 
-    gq = _groq_five_questions(user_input, risk_type)
-    if gq:
-        merged = list(parsed)
-        seen = {x.strip() for x in merged}
-        for q in gq:
-            if len(merged) >= 5:
-                break
-            s = q.strip()
-            if s and s not in seen:
-                seen.add(s)
-                merged.append(s)
-        if len(merged) >= 5:
-            return merged[:5]
-        if len(gq) >= 5:
-            return gq[:5]
-
-    if not parsed:
-        parsed = ["이 정보를 학습 또는 연구 목적으로 사용하실 건가요?"]
-    return _pad_questions_to_five(parsed)
+    # 2) 부족분은 사용자 원문·유형을 넣은 동적 폴백 (고정 5문장 반복 방지)
+    merged = _merge_unique_questions(merged, _dynamic_fallback_questions(user_input, risk_type))
+    return merged[:5]
 
 
 # ── 3단계: 프롬프트 재구성 ────────────────────────────────
