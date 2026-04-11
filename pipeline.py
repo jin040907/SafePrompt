@@ -5,6 +5,7 @@ Step 2. Safe Prompt 핵심 파이프라인
 
 import json
 import os
+import re
 import ssl
 import urllib.error
 import urllib.request
@@ -96,6 +97,104 @@ def call_clova(messages, max_tokens=800):
     return None, err2
 
 
+def _parse_questions_from_model_text(text: str) -> list[str]:
+    """
+    모델이 한 줄에 '1. ... 2. ...' 형태로 주거나, 번호 없이 줄바꿈만 한 경우 모두 처리.
+    """
+    if not text or not str(text).strip():
+        return []
+    t = str(text).strip()
+    if "```" in t:
+        parts = t.split("```")
+        inner = parts[1] if len(parts) >= 2 else t
+        if inner.strip().startswith("json"):
+            inner = inner.strip()[4:].strip()
+        try:
+            data = json.loads(inner)
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()][:5]
+            if isinstance(data, dict) and "questions" in data:
+                return [str(x).strip() for x in data["questions"] if str(x).strip()][:5]
+        except (json.JSONDecodeError, TypeError):
+            t = inner if "```" in text else t
+
+    t = t.replace("\r\n", "\n")
+    lines = [ln.strip() for ln in t.split("\n") if ln.strip()]
+
+    if len(lines) == 1:
+        blob = lines[0]
+        chunks = re.split(r"(?<=[\?\!？!])\s+(?=\d+[\.\)]\s)", blob)
+        if len(chunks) <= 1:
+            chunks = re.split(r"\s+(?=\d+[\.\)]\s)", blob)
+        if len(chunks) > 1:
+            lines = [c.strip() for c in chunks if c.strip()]
+
+    out: list[str] = []
+    for ln in lines:
+        ln = re.sub(r"^(?:질문\s*)?\d+[\.\)]\s*", "", ln, flags=re.IGNORECASE).strip()
+        ln = re.sub(r"^[-•*]\s+", "", ln).strip()
+        if ln:
+            out.append(ln)
+    return out[:10]
+
+
+def _groq_five_questions(user_input: str, risk_type: str) -> list[str] | None:
+    prompt = f"""사용자 질문: {user_input}
+위험 유형: {risk_type}
+
+의도 확인용 질문을 예 또는 아니오로 답할 수 있게 정확히 5개 작성해.
+규칙: 한 줄에 질문 하나만. 번호·글머리표·빈 줄 금지. 질문 문장만 5줄 출력. 다른 말 금지."""
+    result, _ = call_groq([{"role": "user", "content": prompt}], max_tokens=600)
+    if not result:
+        return None
+    parsed = _parse_questions_from_model_text(result)
+    return parsed if parsed else None
+
+
+def _pad_questions_to_five(existing: list[str]) -> list[str]:
+    pool = [
+        "이 내용을 합법적인 교육·연구·업무 목적으로만 사용하실 건가요?",
+        "악의적 이용이나 실제 피해를 목적으로 하지 않으십니까?",
+        "전문가·허가된 맥락에서 다루는 주제가 맞나요?",
+        "생성된 정보를 무단 배포·남용할 계획은 없으신가요?",
+        "추가로 알려 줄 맥락이 있으면 한 줄로 적어 주세요. (없으면 '없음')",
+    ]
+    out = [q.strip() for q in existing if q.strip()]
+    i = 0
+    while len(out) < 5:
+        out.append(pool[i % len(pool)])
+        i += 1
+    return out[:5]
+
+
+def _reconstruction_is_trivial(out: str, original: str) -> bool:
+    a = (out or "").strip()
+    b = (original or "").strip()
+    if not a:
+        return True
+    if a == b:
+        return True
+    if len(a) < 60 and (a == b[: len(a)] or b in a or a in b):
+        return True
+    return False
+
+
+def _fallback_safe_prompt(
+    user_input: str,
+    risk_type: str,
+    questions: list[str],
+    answers: list[str],
+) -> str:
+    qa = "\n".join(f"- {q} → {a}" for q, a in zip(questions, answers))
+    return (
+        f"[페르소나] {risk_type} 관련 질문에 대해 책임 있게 안내하는 조력자\n"
+        f"[지식 범위] 일반·공개 수준의 정보, 악용·위법 조장 금지\n"
+        f"[윤리 준수] 안전·정책을 준수할 것\n"
+        f"[맥락] 사용자가 밝힌 의도:\n{qa}\n"
+        f"[질문] {user_input.strip()}"
+    )
+
+
 # ── 색상 출력 ──────────────────────────────────────────────
 def c(text, color):
     codes = {
@@ -170,13 +269,32 @@ def generate_questions(user_input: str, risk_type: str) -> list[str]:
 
     result, model = call_clova(
         [{"role": "user", "content": prompt}],
-        max_tokens=300
+        max_tokens=512,
     )
-    if not result:
-        return ["이 정보를 학습 또는 연구 목적으로 사용하실 건가요?"]
+    parsed: list[str] = _parse_questions_from_model_text(result) if result else []
 
-    questions = [q.strip() for q in result.strip().split("\n") if q.strip()]
-    return questions[:5]
+    if len(parsed) >= 5:
+        return parsed[:5]
+
+    gq = _groq_five_questions(user_input, risk_type)
+    if gq:
+        merged = list(parsed)
+        seen = {x.strip() for x in merged}
+        for q in gq:
+            if len(merged) >= 5:
+                break
+            s = q.strip()
+            if s and s not in seen:
+                seen.add(s)
+                merged.append(s)
+        if len(merged) >= 5:
+            return merged[:5]
+        if len(gq) >= 5:
+            return gq[:5]
+
+    if not parsed:
+        parsed = ["이 정보를 학습 또는 연구 목적으로 사용하실 건가요?"]
+    return _pad_questions_to_five(parsed)
 
 
 # ── 3단계: 프롬프트 재구성 ────────────────────────────────
@@ -208,9 +326,18 @@ def reconstruct_prompt(
 
     result, model = call_clova(
         [{"role": "user", "content": prompt}],
-        max_tokens=400
+        max_tokens=700,
     )
-    return result or user_input
+    text = (result or "").strip()
+    if text and not _reconstruction_is_trivial(text, user_input):
+        return text
+
+    r2, _ = call_groq([{"role": "user", "content": prompt}], max_tokens=900)
+    text2 = (r2 or "").strip()
+    if text2 and not _reconstruction_is_trivial(text2, user_input):
+        return text2
+
+    return _fallback_safe_prompt(user_input, risk_type, questions, answers)
 
 
 # ── 4단계: 최종 답변 생성 ────────────────────────────────
