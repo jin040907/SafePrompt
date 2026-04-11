@@ -1,0 +1,11 @@
+{
+  "name": "safeprompt",
+  "private": true,
+  "workspaces": ["web"],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"python3 -m uvicorn server:app --reload --host 127.0.0.1 --port 8000\" \"npm run dev -w web\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
