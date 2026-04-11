@@ -170,15 +170,15 @@ cd web && npm run build
 
 ### 클라우드에 올리기 (Railway + Vercel)
 
-**백엔드**는 저장소 루트의 `Dockerfile` 로 컨테이너 배포하고, **프론트**는 루트의 `vercel.json` 으로 Vercel 에 연결하는 흐름을 권장합니다.  
-환경 변수(`GROQ_API_KEY`, `CLOVA_API_KEY`, `FRONTEND_URL` / `CORS_ORIGINS`, Vercel 쪽 `VITE_API_BASE`)와 순서는 **[DEPLOY.md](./DEPLOY.md)** 를 따르세요.
+**백엔드**는 저장소 루트의 `Dockerfile` 로 컨테이너 배포하고, **프론트**는 Vercel에서 **Root Directory = `web`** + `web/vercel.json` 을 쓰는 흐름을 권장합니다.  
+환경 변수와 순서는 **[DEPLOY.md](./DEPLOY.md)** 를 따르세요.
 
 | 파일 | 용도 |
 |------|------|
 | `Dockerfile` | API 이미지 (Railway / Render 등) |
 | `Procfile` | Docker 없이 Python 빌드팩만 쓸 때 시작 명령 |
 | `render.yaml` | Render Blueprint 예시 |
-| `vercel.json` | 루트에서 `npm run build -w web` → `web/dist` 배포 |
+| `web/vercel.json` | Vercel(Vite) — Root Directory `web` 일 때 `dist` 배포 |
 
 ---
 
@@ -191,10 +191,10 @@ SafePrompt/
 ├── test_api.py         # API 연결 스모크 테스트
 ├── requirements.txt
 ├── Dockerfile          # API 컨테이너 배포
-├── vercel.json         # Vercel 프론트 빌드
 ├── DEPLOY.md           # 클라우드 배포 단계별 안내
 ├── package.json        # 루트: concurrently로 api+web 동시 실행
 ├── web/                # Vite + React
+│   ├── vercel.json     # Vercel 배포 (Root Directory = web)
 │   ├── src/
 │   │   ├── App.tsx     # UI 플로우
 │   │   ├── api.ts      # fetch 헬퍼
