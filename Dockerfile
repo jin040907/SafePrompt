@@ -6,10 +6,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py pipeline.py ./
+COPY server.py pipeline.py start.sh ./
+RUN chmod +x start.sh
 
 ENV PORT=8000
 EXPOSE 8000
 
-# 플랫폼이 주입하는 PORT 로 수신 (Railway, Render 등)
-CMD ["sh", "-c", "uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# PORT 는 런타임에 환경 변수로 주입 (start.sh에서 읽음)
+CMD ["./start.sh"]
