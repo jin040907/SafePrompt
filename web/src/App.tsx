@@ -1,6 +1,7 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   apiPost,
+  isProductionMissingApiBase,
   type AnswerResponse,
   type ClassifyResponse,
   type QuestionsResponse,
@@ -77,8 +78,11 @@ function HowItWorks() {
 
 export default function App() {
   const promptRef = useRef<HTMLTextAreaElement>(null)
+  const formRef = useRef<HTMLFormElement>(null)
   const [step, setStep] = useState<Step>('input')
   const [userInput, setUserInput] = useState('')
+  /** 마지막으로 분석 API에 성공적으로 보낸 원문(재구성 단계에서 textarea 없을 때 사용) */
+  const [lockedPrompt, setLockedPrompt] = useState('')
 
   /** 제출 시점 DOM 값(IME·동기화 이슈로 state와 다를 수 있어 API 페이로드는 이 값을 사용) */
   const getPromptText = () => (promptRef.current?.value ?? userInput).trim()
@@ -116,8 +120,7 @@ export default function App() {
     ))
   }, [questions, answers])
 
-  async function handleClassify() {
-    const text = getPromptText()
+  async function runClassify(text: string) {
     if (!text) {
       setError('질문을 입력한 뒤 분석을 시작해 주세요.')
       return
@@ -132,10 +135,29 @@ export default function App() {
       const data = await apiPost<ClassifyResponse>('/classify', {
         user_input: text,
       })
+      if (
+        typeof data.received_chars === 'number' &&
+        data.received_chars !== text.length
+      ) {
+        setError(
+          `서버가 받은 글자 수(${data.received_chars})와 보낸 글자 수(${text.length})가 다릅니다. 다른 API 인스턴스에 붙었을 수 있습니다. Vercel의 VITE_API_BASE와 Railway 배포를 확인해 주세요.`,
+        )
+        return
+      }
       const qs = await apiPost<QuestionsResponse>('/questions', {
         user_input: text,
         risk_type: data.risk_type,
       })
+      if (
+        typeof qs.received_chars === 'number' &&
+        qs.received_chars !== text.length
+      ) {
+        setError(
+          `질문 생성 단계에서 글자 수 불일치(보냄 ${text.length} / 받음 ${qs.received_chars}). API 주소를 확인해 주세요.`,
+        )
+        return
+      }
+      setLockedPrompt(text)
       setClassify(data)
       setQuestions(qs.questions)
       setAnswers(qs.questions.map(() => ''))
@@ -147,9 +169,17 @@ export default function App() {
     }
   }
 
+  function onPromptSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const raw = fd.get('user_prompt')
+    const text = typeof raw === 'string' ? raw.trim() : ''
+    void runClassify(text)
+  }
+
   async function handleReconstruct() {
     if (!classify) return
-    const text = getPromptText()
+    const text = lockedPrompt.trim() || userInput.trim()
     if (!text) {
       setError('원본 질문이 비어 있습니다. 이전 단계로 돌아가 입력을 확인해 주세요.')
       return
@@ -202,6 +232,7 @@ export default function App() {
   function resetAll() {
     setStep('input')
     setUserInput('')
+    setLockedPrompt('')
     setClassify(null)
     setQuestions([])
     setAnswers([])
@@ -254,6 +285,14 @@ export default function App() {
           {loading ? '요청을 처리하고 있습니다. 잠시만 기다려 주세요.' : ''}
         </p>
 
+        {isProductionMissingApiBase() ? (
+          <div className="banner banner--err" role="alert">
+            <strong>VITE_API_BASE가 없습니다.</strong> Vercel 환경 변수에 Railway API URL을 넣고
+            Redeploy 하지 않으면 브라우저가 잘못된 주소(로컬 등)로 요청해 결과가 항상 같게 보일 수
+            있습니다.
+          </div>
+        ) : null}
+
         {error ? (
           <div className="banner banner--err" role="alert">
             {error}
@@ -266,53 +305,57 @@ export default function App() {
               <CardTitle step={1}>질문 입력</CardTitle>
               <CardHint>{STEP_HINTS.input}</CardHint>
               <HowItWorks />
-              <div className="example-chips" role="group" aria-label="예시 질문">
-                <span className="example-chips__label">예시로 채우기</span>
-                <div className="example-chips__row">
-                  {EXAMPLE_PROMPTS.map((ex) => (
-                    <button
-                      key={ex.id}
-                      type="button"
-                      className="example-chip"
-                      disabled={loading}
-                      onClick={() => setUserInput(ex.text)}
-                    >
-                      {ex.label}
-                    </button>
-                  ))}
+              <form ref={formRef} onSubmit={onPromptSubmit}>
+                <div className="example-chips" role="group" aria-label="예시 질문">
+                  <span className="example-chips__label">예시로 채우기</span>
+                  <div className="example-chips__row">
+                    {EXAMPLE_PROMPTS.map((ex) => (
+                      <button
+                        key={ex.id}
+                        type="button"
+                        className="example-chip"
+                        disabled={loading}
+                        onClick={() => setUserInput(ex.text)}
+                      >
+                        {ex.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              <textarea
-                className="textarea"
-                id="main-question"
-                rows={5}
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return
-                  if (!(e.ctrlKey || e.metaKey)) return
-                  e.preventDefault()
-                  if (canGoQuestions && !loading) void handleClassify()
-                }}
-                placeholder="예: 위와 같이 궁금한 내용을 한글로 적어 주세요."
-                disabled={loading}
-                aria-describedby="hint-input-shortcut"
-              />
-              <p id="hint-input-shortcut" className="kbd-hint">
-                입력 후 <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">Enter</kbd> (Mac은{' '}
-                <kbd className="kbd">⌘</kbd> + <kbd className="kbd">Enter</kbd>)로도 분석을 시작할 수
-                있어요.
-              </p>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  disabled={!canGoQuestions || loading}
-                  onClick={handleClassify}
-                >
-                  {loading ? '분석 중…' : '분석 시작'}
-                </button>
-              </div>
+                <textarea
+                  ref={promptRef}
+                  name="user_prompt"
+                  className="textarea"
+                  id="main-question"
+                  rows={5}
+                  value={userInput}
+                  onChange={(e) => setUserInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return
+                    if (!(e.ctrlKey || e.metaKey)) return
+                    e.preventDefault()
+                    if (!canGoQuestions || loading) return
+                    formRef.current?.requestSubmit()
+                  }}
+                  placeholder="예: 위와 같이 궁금한 내용을 한글로 적어 주세요."
+                  disabled={loading}
+                  aria-describedby="hint-input-shortcut"
+                />
+                <p id="hint-input-shortcut" className="kbd-hint">
+                  입력 후 <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">Enter</kbd> (Mac은{' '}
+                  <kbd className="kbd">⌘</kbd> + <kbd className="kbd">Enter</kbd>)로도 분석을 시작할 수
+                  있어요.
+                </p>
+                <div className="actions">
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
+                    disabled={!canGoQuestions || loading}
+                  >
+                    {loading ? '분석 중…' : '분석 시작'}
+                  </button>
+                </div>
+              </form>
             </section>
           )}
 
@@ -329,6 +372,14 @@ export default function App() {
                   <tr>
                     <th scope="row">위험도</th>
                     <td>{classify.gauge_before} / 100</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">서버 수신</th>
+                    <td>
+                      {typeof classify.received_chars === 'number'
+                        ? `${classify.received_chars}자 (입력 길이와 같아야 정상)`
+                        : '— (API 업데이트 후 표시)'}
+                    </td>
                   </tr>
                 </tbody>
               </table>

@@ -1,10 +1,19 @@
 /** 개발: Vite 프록시 /api → FastAPI. 배포: VITE_API_BASE=https://your-be.railway.app */
 
+/** 프로덕션 빌드인데 VITE_API_BASE 없음 → 예전엔 127.0.0.1:8000 으로 가서 로컬/엉뚱한 서버에 붙는 문제가 많았음 */
+export function isProductionMissingApiBase(): boolean {
+  return import.meta.env.PROD && !String(import.meta.env.VITE_API_BASE ?? '').trim()
+}
+
 export function apiUrl(path: string): string {
-  const env = import.meta.env.VITE_API_BASE?.replace(/\/$/, '')
+  const env = String(import.meta.env.VITE_API_BASE ?? '')
+    .trim()
+    .replace(/\/$/, '')
   if (env) return `${env}${path}`
   if (import.meta.env.DEV) return `/api${path}`
-  return `http://127.0.0.1:8000${path}`
+  throw new Error(
+    'VITE_API_BASE가 없습니다. Vercel 환경 변수에 백엔드 URL(예: https://xxx.up.railway.app)을 넣고 저장한 뒤 Redeploy 하세요. Preview 배포는 Preview용 변수도 따로 필요합니다.',
+  )
 }
 
 function parseErrorDetail(data: unknown): string {
@@ -43,8 +52,16 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   return r.json() as Promise<T>
 }
 
-export type ClassifyResponse = { risk_type: string; gauge_before: number }
-export type QuestionsResponse = { questions: string[] }
+export type ClassifyResponse = {
+  risk_type: string
+  gauge_before: number
+  /** 최신 API만 포함. 없으면 글자 수 검증 생략 */
+  received_chars?: number
+}
+export type QuestionsResponse = {
+  questions: string[]
+  received_chars?: number
+}
 export type ReconstructResponse = {
   safe_prompt: string
   gauge_before: number

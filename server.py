@@ -59,6 +59,10 @@ class ClassifyRequest(BaseModel):
 class ClassifyResponse(BaseModel):
     risk_type: str
     gauge_before: int
+    received_chars: int = Field(
+        ...,
+        description="서버가 받은 user_input 길이(공백 제거 후). 프론트와 불일치하면 요청 경로를 의심",
+    )
 
 class QuestionsRequest(BaseModel):
     user_input: str
@@ -66,6 +70,7 @@ class QuestionsRequest(BaseModel):
 
 class QuestionsResponse(BaseModel):
     questions: list[str]
+    received_chars: int = Field(..., description="서버가 받은 user_input 길이(공백 제거 후)")
 
 class ReconstructRequest(BaseModel):
     user_input: str
@@ -111,8 +116,13 @@ def classify(req: ClassifyRequest):
     """1단계: 위험 유형 분류 + 게이지 수치"""
     if not req.user_input.strip():
         raise HTTPException(status_code=400, detail="입력이 비어 있습니다")
+    raw = req.user_input.strip()
     risk_type, gauge_before = classify_risk(req.user_input)
-    return ClassifyResponse(risk_type=risk_type, gauge_before=gauge_before)
+    return ClassifyResponse(
+        risk_type=risk_type,
+        gauge_before=gauge_before,
+        received_chars=len(raw),
+    )
 
 
 @app.post("/questions", response_model=QuestionsResponse)
@@ -122,8 +132,9 @@ def questions(req: QuestionsRequest):
         raise HTTPException(status_code=400, detail="입력이 비어 있습니다")
     if not req.risk_type.strip():
         raise HTTPException(status_code=400, detail="risk_type이 비어 있습니다")
+    raw = req.user_input.strip()
     qs = generate_questions(req.user_input, req.risk_type)
-    return QuestionsResponse(questions=qs)
+    return QuestionsResponse(questions=qs, received_chars=len(raw))
 
 
 @app.post("/reconstruct", response_model=ReconstructResponse)
