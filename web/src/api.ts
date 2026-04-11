@@ -27,6 +27,7 @@ function parseErrorDetail(data: unknown): string {
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(apiUrl(path), {
     method: 'POST',
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })

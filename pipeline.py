@@ -286,6 +286,44 @@ def box(title, content):
     print(f"{c('  └' + '─'*43 + '┘', 'gray')}")
 
 
+def _parse_classify_llm_json(result: str) -> tuple[str, int] | None:
+    """모델이 앞뒤 설명·마크다운을 섞어도 JSON 한 덩어리만 찾아 파싱."""
+    raw = (result or "").strip()
+    if not raw:
+        return None
+
+    candidates: list[str] = []
+    if "```" in raw:
+        for chunk in raw.split("```"):
+            c = chunk.strip()
+            if c.lower().startswith("json"):
+                c = c[4:].lstrip()
+            if c.startswith("{"):
+                candidates.append(c)
+    m = re.search(r"\{[\s\S]{2,1200}\}", raw)
+    if m:
+        candidates.append(m.group(0))
+    candidates.append(raw)
+
+    seen: set[str] = set()
+    for c in candidates:
+        if c in seen:
+            continue
+        seen.add(c)
+        try:
+            parsed = json.loads(c)
+            if not isinstance(parsed, dict):
+                continue
+            rt = str(parsed.get("risk_type", "")).strip()
+            if not rt:
+                continue
+            sc = int(parsed.get("score", 50))
+            return rt, max(0, min(100, sc))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+    return None
+
+
 # ── 1단계: 위험 분류 ───────────────────────────────────────
 def classify_risk(user_input: str) -> tuple[str, int]:
     """
@@ -304,37 +342,27 @@ def classify_risk(user_input: str) -> tuple[str, int]:
 
 질문: {user_input}"""
 
-    result, err = call_groq([{"role": "user", "content": prompt}], max_tokens=100)
+    result, err = call_groq([{"role": "user", "content": prompt}], max_tokens=280)
     if not result:
         return "알 수 없음", 50
 
-    # JSON 파싱
-    try:
-        # ```json ... ``` 감싸진 경우 처리
-        text = result.strip()
-        if "```" in text:
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        parsed = json.loads(text.strip())
-        return parsed["risk_type"], int(parsed["score"])
-    except Exception:
-        # 파싱 실패 시 텍스트에서 추출 시도
-        for rt in ["윤리", "보안", "편향", "오남용", "안전"]:
-            if rt in result:
-                return rt, 70
-        return "알 수 없음", 50
+    parsed = _parse_classify_llm_json(result)
+    if parsed:
+        return parsed
+
+    for rt in ["윤리", "보안", "편향", "오남용", "안전"]:
+        if rt in result:
+            return rt, 70
+    return "알 수 없음", 50
 
 
 # ── 2단계: 의도 확인 질문 생성 ────────────────────────────
 def generate_questions(user_input: str, risk_type: str) -> list[str]:
-    """위험 유형에 맞는 의도 확인 질문 5개 생성 (주제별로 달라지도록 Groq 우선)."""
-    info(f"의도 확인 질문 생성 — [{risk_type}] (Groq → HyperCLOVA 순)")
-
-    # 1) Groq 우선: 사용자 원문을 질문에 반영하도록 프롬프트 고정
-    gq = _groq_five_questions(user_input, risk_type)
-    if gq and len(gq) >= 5:
-        return gq[:5]
+    """
+    위험 유형에 맞는 의도 확인 질문 5개.
+    배포 전과 같이 HyperCLOVA 우선 → 부족 시 Groq 보강 → 그래도 부족하면 동적 폴백.
+    """
+    info(f"의도 확인 질문 생성 — [{risk_type}] (HyperCLOVA → Groq → 폴백)")
 
     prompt = f"""사용자가 다음 질문을 했어. 위험 유형은 '{risk_type}'야.
 
@@ -352,11 +380,14 @@ def generate_questions(user_input: str, risk_type: str) -> list[str]:
     )
     clova_parsed: list[str] = _parse_questions_from_model_text(result) if result else []
 
-    merged = _merge_unique_questions(gq or [], clova_parsed)
+    if len(clova_parsed) >= 5:
+        return clova_parsed[:5]
+
+    gq = _groq_five_questions(user_input, risk_type)
+    merged = _merge_unique_questions(clova_parsed, gq or [])
     if len(merged) >= 5:
         return merged[:5]
 
-    # 2) 부족분은 사용자 원문·유형을 넣은 동적 폴백 (고정 5문장 반복 방지)
     merged = _merge_unique_questions(merged, _dynamic_fallback_questions(user_input, risk_type))
     return merged[:5]
 

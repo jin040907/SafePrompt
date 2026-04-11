@@ -79,6 +79,9 @@ export default function App() {
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const [step, setStep] = useState<Step>('input')
   const [userInput, setUserInput] = useState('')
+
+  /** 제출 시점 DOM 값(IME·동기화 이슈로 state와 다를 수 있어 API 페이로드는 이 값을 사용) */
+  const getPromptText = () => (promptRef.current?.value ?? userInput).trim()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -89,7 +92,7 @@ export default function App() {
   const [promptDraft, setPromptDraft] = useState('')
   const [result, setResult] = useState<AnswerResponse | null>(null)
 
-  const canGoQuestions = userInput.trim().length > 0
+  const canGoQuestions = getPromptText().length > 0
 
   const answerInputs = useMemo(() => {
     if (questions.length === 0) return null
@@ -114,6 +117,12 @@ export default function App() {
   }, [questions, answers])
 
   async function handleClassify() {
+    const text = getPromptText()
+    if (!text) {
+      setError('질문을 입력한 뒤 분석을 시작해 주세요.')
+      return
+    }
+    setUserInput(text)
     setError(null)
     setLoading(true)
     setClassify(null)
@@ -121,10 +130,10 @@ export default function App() {
     setAnswers([])
     try {
       const data = await apiPost<ClassifyResponse>('/classify', {
-        user_input: userInput.trim(),
+        user_input: text,
       })
       const qs = await apiPost<QuestionsResponse>('/questions', {
-        user_input: userInput.trim(),
+        user_input: text,
         risk_type: data.risk_type,
       })
       setClassify(data)
@@ -140,11 +149,17 @@ export default function App() {
 
   async function handleReconstruct() {
     if (!classify) return
+    const text = getPromptText()
+    if (!text) {
+      setError('원본 질문이 비어 있습니다. 이전 단계로 돌아가 입력을 확인해 주세요.')
+      return
+    }
+    setUserInput(text)
     setError(null)
     setLoading(true)
     try {
       const data = await apiPost<ReconstructResponse>('/reconstruct', {
-        user_input: userInput.trim(),
+        user_input: text,
         risk_type: classify.risk_type,
         questions,
         answers,
