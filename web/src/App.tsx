@@ -7,6 +7,7 @@ import {
   type QuestionsResponse,
   type ReconstructResponse,
 } from './api'
+import { AnswerMarkdown } from './components/AnswerMarkdown'
 import { RiskGauge } from './components/RiskGauge'
 import {
   EXAMPLE_PROMPTS,
@@ -84,8 +85,11 @@ export default function App() {
   /** 마지막으로 분석 API에 성공적으로 보낸 원문(재구성 단계에서 textarea 없을 때 사용) */
   const [lockedPrompt, setLockedPrompt] = useState('')
 
-  /** 제출 시점 DOM 값(IME·동기화 이슈로 state와 다를 수 있어 API 페이로드는 이 값을 사용) */
-  const getPromptText = () => (promptRef.current?.value ?? userInput).trim()
+  /**
+   * 예시 칩으로만 채울 때는 state가 먼저 갱신되고 DOM ref는 한 틱 늦을 수 있음.
+   * `'' ?? userInput`이 아니라 빈 문자열이 우선되어 버튼이 꺼진 채로 남는 문제가 있었음.
+   */
+  const getPromptText = () => userInput.trim() || (promptRef.current?.value ?? '').trim()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -443,6 +447,8 @@ export default function App() {
                 <RiskGauge value={recon.gauge_after} label="교정 후" />
                 {reconDelta > 0 ? (
                   <div className="gauge-delta">위험도 {reconDelta} 감소</div>
+                ) : recon.gauge_before === recon.gauge_after && recon.gauge_before <= 35 ? (
+                  <div className="gauge-delta gauge-delta--muted">감소 없음 · 낮은 위험 구간</div>
                 ) : null}
               </div>
               <div className="actions">
@@ -489,9 +495,20 @@ export default function App() {
                 <RiskGauge variant="card" value={result.gauge_after} label="교정 후" />
                 {resultDelta > 0 ? (
                   <div className="gauge-delta">위험도 {resultDelta} 감소</div>
+                ) : result.gauge_before === result.gauge_after && result.gauge_before <= 35 ? (
+                  <div className="gauge-delta gauge-delta--muted">감소 없음 · 낮은 위험 구간</div>
                 ) : null}
               </div>
-              <article className="answer-box">{result.answer}</article>
+              {result.gauge_before === result.gauge_after && result.gauge_before === 0 ? (
+                <p className="gauge-same-hint">
+                  교정 전이 <strong>0</strong>이면 감점할 수 없어 교정 후도 <strong>0</strong>으로 같게
+                  나옵니다. 교육·일반 질문은 보통 10~40대로 분류되도록 안내했으니, 새로 분석하면 숫자가
+                  구분되어 보일 수 있습니다.
+                </p>
+              ) : null}
+              <article className="answer-box answer-box--md" aria-label="생성된 답변">
+                <AnswerMarkdown>{result.answer}</AnswerMarkdown>
+              </article>
               <div className="actions">
                 <button type="button" className="btn btn--primary" onClick={resetAll}>
                   다른 질문 하기

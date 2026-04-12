@@ -62,8 +62,9 @@ def call_api(url, headers, body):
         return None, str(e)
 
 
-def call_groq(messages, max_tokens=800):
+def call_groq(messages, max_tokens=800, temperature: float | None = None):
     """Groq (Llama 3.3 70B) 호출"""
+    t = 0.3 if temperature is None else temperature
     data, err = call_api(
         "https://api.groq.com/openai/v1/chat/completions",
         {"Authorization": f"Bearer {GROQ_API_KEY}"},
@@ -71,7 +72,7 @@ def call_groq(messages, max_tokens=800):
             "model": "llama-3.3-70b-versatile",
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0.3,
+            "temperature": t,
         }
     )
     if data:
@@ -286,6 +287,37 @@ def box(title, content):
     print(f"{c('  └' + '─'*43 + '┘', 'gray')}")
 
 
+def _clamp_dim(v: object) -> int | None:
+    try:
+        x = int(round(float(v)))  # type: ignore[arg-type]
+        return max(1, min(10, x))
+    except (TypeError, ValueError):
+        return None
+
+
+def _first_dim(parsed: dict, *keys: str) -> int | None:
+    for k in keys:
+        if k in parsed and parsed[k] is not None:
+            v = _clamp_dim(parsed.get(k))
+            if v is not None:
+                return v
+    return None
+
+
+def _score_from_dimension_triple(parsed: dict) -> int | None:
+    """
+    세 축(각 1~10)으로 세분화해 0~100 단일 점수로 환산.
+    모델이 한 숫자만 반복하는 현상을 줄이기 위함.
+    """
+    a = _first_dim(parsed, "d_topic", "topic")
+    b = _first_dim(parsed, "d_misuse_if_wrong", "d_misuse", "misuse")
+    c = _first_dim(parsed, "d_prompt_ambiguity", "d_ambiguity", "ambiguity")
+    if a is None or b is None or c is None:
+        return None
+    # (10,10,10)→100, (1,1,1)→10 근처
+    return max(0, min(100, int(round((a + b + c) / 30.0 * 100))))
+
+
 def _parse_classify_llm_json(result: str) -> tuple[str, int] | None:
     """모델이 앞뒤 설명·마크다운을 섞어도 JSON 한 덩어리만 찾아 파싱."""
     raw = (result or "").strip()
@@ -300,7 +332,7 @@ def _parse_classify_llm_json(result: str) -> tuple[str, int] | None:
                 c = c[4:].lstrip()
             if c.startswith("{"):
                 candidates.append(c)
-    m = re.search(r"\{[\s\S]{2,1200}\}", raw)
+    m = re.search(r"\{[\s\S]{2,2000}\}", raw)
     if m:
         candidates.append(m.group(0))
     candidates.append(raw)
@@ -317,8 +349,12 @@ def _parse_classify_llm_json(result: str) -> tuple[str, int] | None:
             rt = str(parsed.get("risk_type", "")).strip()
             if not rt:
                 continue
-            sc = int(parsed.get("score", 50))
-            return rt, max(0, min(100, sc))
+            dim_score = _score_from_dimension_triple(parsed)
+            if dim_score is not None:
+                return rt, dim_score
+            if "score" in parsed:
+                sc = int(parsed.get("score", 50))
+                return rt, max(0, min(100, sc))
         except (json.JSONDecodeError, TypeError, ValueError):
             continue
     return None
@@ -332,17 +368,27 @@ def classify_risk(user_input: str) -> tuple[str, int]:
     """
     info("GPT 프롬프트 기반 위험 유형 분류 중...")
 
-    prompt = f"""다음 질문을 분석해서 위험 유형과 위험도를 판단해줘.
+    prompt = f"""다음 사용자 질문을 분석해 위험 유형과 세 가지 하위 지표를 매겨라.
 
-위험 유형 선택지: 윤리 / 보안 / 편향 / 오남용 / 안전
-위험도: 0(완전 안전) ~ 100(매우 위험) 사이 정수
+위험 유형(risk_type): 윤리 / 보안 / 편향 / 오남용 / 안전 중 하나
 
-반드시 아래 JSON 형식으로만 답해. 다른 말 하지 마.
-{{"risk_type": "위험유형", "score": 숫자, "reason": "한 줄 이유"}}
+각 지표는 1(매우 낮음)~10(매우 높음) 정수:
+- d_topic: 주제 자체의 민감도·정책상 민감도 (일반 교육·과학 요약은 낮게, 무기·해킹 실습은 높게)
+- d_misuse_if_wrong: AI가 잘못 안내했을 때 실제 피해·악용 가능성
+- d_prompt_ambiguity: 질문이 모호하거나 의도가 불분명한 정도
+
+서로 다른 질문이면 세 숫자 조합도 달라야 한다(항상 비슷한 값만 주지 말 것).
+
+반드시 아래 JSON 한 줄만 출력:
+{{"risk_type":"…","d_topic":1-10,"d_misuse_if_wrong":1-10,"d_prompt_ambiguity":1-10,"reason":"한 줄"}}
 
 질문: {user_input}"""
 
-    result, err = call_groq([{"role": "user", "content": prompt}], max_tokens=280)
+    result, err = call_groq(
+        [{"role": "user", "content": prompt}],
+        max_tokens=320,
+        temperature=0.42,
+    )
     if not result:
         return "알 수 없음", 50
 
@@ -446,16 +492,97 @@ def generate_answer(safe_prompt: str) -> tuple[str, str]:
     return result or "답변 생성 실패", model
 
 
+def _mitigation_strength(answers: list[str]) -> float:
+    """
+    의도 확인 답변에서 합법·비악의·교육 맥락을 0~1 로 추정.
+    줄마다 따로 세어, 여러 줄에 '예'만 적어도 가산되게 한다(전체 blob 한 번만 보던 버그 방지).
+    """
+    if not answers:
+        return 0.0
+
+    safe_kw = (
+        "학습",
+        "교육",
+        "연구",
+        "과제",
+        "수업",
+        "실습",
+        "업무",
+        "보고",
+        "대학",
+        "고등",
+        "합법",
+        "내부",
+        "ctf",
+        "보안 전공",
+        "시험",
+        "레포트",
+    )
+    benign_kw = (
+        "아니요",
+        "아니오",
+        "없습니다",
+        "없음",
+        "악의",
+        "악의 없",
+        "배포 안",
+        "배포하지",
+        "불법 아님",
+        "금지된 목적",
+        "no malicious",
+    )
+    ack_kw = ("네", "예", "응", "맞", "그렇", "yes", "맞습니다", "그렇습니다")
+
+    pts = 0.0
+    for raw in answers:
+        s = (raw or "").strip().lower()
+        if not s:
+            continue
+        for k in safe_kw:
+            if k in s:
+                pts += 2.6
+        for k in benign_kw:
+            if k in s:
+                pts += 3.0
+        for k in ack_kw:
+            if k in s:
+                pts += 2.0
+
+    return max(0.0, min(1.0, pts / 42.0))
+
+
 # ── 교정 후 위험도 재산출 ────────────────────────────────
 def recalculate_score(original_score: int, answers: list[str]) -> int:
     """
     사용자 답변 기반으로 교정 후 위험도 재산출 (0~100).
-    '아니오'·부정적 답은 위험 완화로 더 크게 반영, 긍정(예/학습 목적 등)은 보조적으로 반영.
+
+    - 답변을 줄 단위로 반영해 완화 강도 m 을 잡고,
+    - 의도 확인에 참여한 줄 수만큼 '참여 보너스'를 더해 교정 효과가 드러나게 함,
+    - 원점수가 클수록(민감할수록) 절대 감소폭을 키워 교정 전·후 차이가 두드러지게 함.
     """
-    neg_count = sum(1 for a in answers if "아니오" in a or "없" in a or "no" in a.lower())
-    pos_count = sum(1 for a in answers if "예" in a or "있" in a or "yes" in a.lower())
-    reduction = (neg_count * 8) + (pos_count * 4)
-    return max(0, min(100, original_score - reduction))
+    m = _mitigation_strength(answers)
+    n_lines = sum(1 for a in answers if (a or "").strip())
+    # 질문 5개에 맞춰 답한 만큼 기본 완화(내용이 짧아도 참여 자체 반영)
+    participation = min(0.38, 0.072 * n_lines)
+    m_eff = min(1.0, m + participation)
+
+    if original_score <= 0:
+        return 0
+
+    # 감소 비율: 기본 10% + (완화에 비례 최대 ~58%) — 민감한 원점수일수록 추가 가중
+    tier_boost = 0.55 + 0.45 * (original_score / 100.0)
+    drop_ratio = (0.10 + 0.58 * m_eff) * tier_boost
+    drop_ratio = min(0.92, drop_ratio)
+
+    raw_after = int(round(original_score * (1.0 - drop_ratio)))
+
+    # 의도 확인을 충분히 했는데도 차이가 너무 작으면 최소 감소폭 보장
+    if n_lines >= 3 and original_score >= 22:
+        min_drop = max(9, int(original_score * 0.16))
+        cap_after = original_score - min_drop
+        raw_after = min(raw_after, cap_after)
+
+    return max(0, min(100, raw_after))
 
 
 # ── 전체 파이프라인 실행 ──────────────────────────────────

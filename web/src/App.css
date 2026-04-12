@@ -672,6 +672,29 @@
   white-space: nowrap;
 }
 
+.gauge-delta--muted {
+  background: var(--surface-subtle);
+  border-color: var(--border);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.gauge-same-hint {
+  margin: 0.5rem 0 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.gauge-same-hint strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
 .answer-box {
   margin-top: 0.5rem;
   padding: 1.15rem 1.2rem;
@@ -683,6 +706,91 @@
   word-break: break-word;
   font-size: 0.9375rem;
   color: var(--text-primary);
+}
+
+/* react-markdown 출력 — pre-wrap은 코드 블록에만 */
+.answer-box--md {
+  white-space: normal;
+}
+
+.answer-box--md :first-child {
+  margin-top: 0;
+}
+
+.answer-box--md p {
+  margin: 0 0 0.75em;
+}
+
+.answer-box--md ul,
+.answer-box--md ol {
+  margin: 0 0 0.85em;
+  padding-left: 1.35rem;
+}
+
+.answer-box--md li {
+  margin: 0.25em 0;
+}
+
+.answer-box--md strong {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.answer-box--md h1,
+.answer-box--md h2,
+.answer-box--md h3,
+.answer-box--md h4 {
+  font-size: 1.02em;
+  font-weight: 600;
+  margin: 1.1em 0 0.45em;
+  line-height: 1.35;
+}
+
+.answer-box--md h1:first-child,
+.answer-box--md h2:first-child,
+.answer-box--md h3:first-child {
+  margin-top: 0;
+}
+
+.answer-box--md hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 1rem 0;
+}
+
+.answer-box--md pre {
+  margin: 0.75em 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-elevated, var(--surface-subtle));
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-size: 0.88em;
+}
+
+.answer-box--md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.answer-box--md p code,
+.answer-box--md li code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: var(--surface-elevated, rgba(0, 0, 0, 0.06));
+}
+
+.answer-box--md pre code {
+  padding: 0;
+  background: none;
+}
+
+.answer-box--md blockquote {
+  margin: 0.75em 0;
+  padding-left: 0.9rem;
+  border-left: 3px solid var(--border);
+  color: var(--text-secondary);
 }
 
 .footer {
