@@ -1,5 +1,6 @@
 {
   "name": "safeprompt",
+  "license": "MIT",
   "private": true,
   "workspaces": ["web"],
   "scripts": {
