@@ -377,14 +377,6 @@ export default function App() {
                     <th scope="row">위험도</th>
                     <td>{classify.gauge_before} / 100</td>
                   </tr>
-                  <tr>
-                    <th scope="row">서버 수신</th>
-                    <td>
-                      {typeof classify.received_chars === 'number'
-                        ? `${classify.received_chars}자 (입력 길이와 같아야 정상)`
-                        : '— (API 업데이트 후 표시)'}
-                    </td>
-                  </tr>
                 </tbody>
               </table>
               <RiskGauge value={classify.gauge_before} label="위험도" />
