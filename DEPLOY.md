@@ -51,7 +51,7 @@
 
 ## 3. 프론트 (Vite → Vercel)
 
-모노레포라서 **프론트만** 쓰려면 Vercel에 **Root Directory = `web`** 를 지정하는 방식이 가장 안정적입니다 (`web/vercel.json` + 빌드 산출물 `dist`).
+모노레포라서 **프론트만** 쓰려면 Vercel에 **Root Directory = `web`** 를 지정하는 방식이 가장 안정적입니다 (`web/vercel.json` + 빌드 산출물 `dist`). 저장소 **루트에는** `vercel.json`을 두지 않습니다 — Vercel 프로젝트를 `web` 기준으로만 연결하면 됩니다.
 
 1. [Vercel](https://vercel.com) → **Add New** → **Project** → GitHub 저장소 import
 2. **Configure Project** 화면에서:

@@ -46,7 +46,7 @@
 | 요소 | 설명 |
 |------|------|
 | **이용 순서** | 첫 화면에서 「처음이신가요?」를 펼치면 4단계 요약을 볼 수 있습니다. |
-| **예시로 채우기** | 학습·일상·민감 주의 등 샘플 문장을 누르면 입력란이 채워집니다. |
+| **예시로 채우기** | 교육·일상·의료·개발·직장·학문 등 맥락별 샘플을 누르면 입력란이 채워집니다. |
 | **단계별 안내** | 각 카드 상단에 해당 단계에서 할 일이 한 줄로 설명됩니다. |
 | **단축키** | 질문 입력 후 **Ctrl + Enter** (Mac: **⌘ + Enter**)로 분석을 시작할 수 있습니다. |
 | **접근성** | 처리 중일 때 스크린 리더용 안내(`aria-live`)가 갱신됩니다. |
@@ -107,7 +107,7 @@ cp .env.example .env
 |------|------|
 | `VITE_API_BASE` | 백엔드 베이스 URL (예: `https://api.example.com`, 끝 `/` 없이) |
 
-설정하지 않으면 개발 시에는 Vite 프록시(`/api` → `127.0.0.1:8000`), 프로덕션 빌드 기본은 `http://127.0.0.1:8000` 입니다.
+개발 시에는 Vite 프록시(`/api` → `127.0.0.1:8000`)를 씁니다. **프로덕션 빌드**에서는 `VITE_API_BASE`가 없으면 잘못된 주소로 요청이 가지 않도록 **안내 배너가 표시**되도록 되어 있으니, Vercel 등에 반드시 백엔드 URL을 넣고 빌드하세요.
 
 ---
 
@@ -148,13 +148,13 @@ npm run dev -w web
 |--------|------|------|
 | `GET` | `/` | 서비스 이름 확인 |
 | `GET` | `/health` | 헬스 체크 |
-| `POST` | `/classify` | 위험 유형 + 게이지 |
+| `POST` | `/classify` | 위험 유형 + 게이지 (+ `received_chars` 등) |
 | `POST` | `/questions` | 의도 확인 질문 목록 |
 | `POST` | `/reconstruct` | 교정 프롬프트 + 게이지 전후 |
 | `POST` | `/answer` | 최종 답변 |
 | `POST` | `/pipeline` | 전체 파이프라인 일괄 실행(테스트용) |
 
-CORS는 로컬 `http://localhost:3000`, `http://localhost:5173` 만 허용되어 있습니다. 다른 오리진을 쓰면 `server.py`의 `allow_origins`를 수정하세요.
+CORS는 로컬(`localhost:3000`, `5173` 등)에 더해 환경 변수 **`FRONTEND_URL`**(한 개) 또는 **`CORS_ORIGINS`**(쉼표 구분)로 프로덕션 프론트 도메인을 넣을 수 있습니다. `server.py`의 `_cors_allow_origins()`를 참고하세요.
 
 ---
 
@@ -188,18 +188,21 @@ cd web && npm run build
 SafePrompt/
 ├── server.py           # FastAPI 앱·라우트
 ├── pipeline.py         # LLM 호출·위험 분류·재구성·답변
-├── test_api.py         # API 연결 스모크 테스트
+├── serve.py            # 프로덕션 진입점(PORT 읽어 uvicorn 실행) — Dockerfile / Procfile
+├── test_api.py         # Groq·HyperCLOVA 연결 스모크 테스트
 ├── requirements.txt
-├── Dockerfile          # API 컨테이너 배포
-├── DEPLOY.md           # 클라우드 배포 단계별 안내
-├── package.json        # 루트: concurrently로 api+web 동시 실행
-├── web/                # Vite + React
-│   ├── vercel.json     # Vercel 배포 (Root Directory = web)
+├── Dockerfile
+├── Procfile
+├── DEPLOY.md
+├── package.json        # concurrently + rxjs; `npm run dev` = API + Vite
+├── web/
+│   ├── vercel.json     # Vercel — 프로젝트 Root Directory 를 `web` 으로 둘 때
 │   ├── src/
-│   │   ├── App.tsx     # UI 플로우
-│   │   ├── api.ts      # fetch 헬퍼
-│   │   └── ...
-│   └── vite.config.ts  # 개발 시 /api 프록시
+│   │   ├── App.tsx
+│   │   ├── onboarding.ts
+│   │   ├── api.ts
+│   │   └── components/ # RiskGauge, AnswerMarkdown 등
+│   └── vite.config.ts
 └── .env.example
 ```
 
@@ -220,6 +223,8 @@ SafePrompt/
 | `latin-1` / 헤더 인코딩 오류 | API 키에 한글·이모지가 섞이지 않았는지 확인하세요. |
 | `uvicorn` 명령을 찾을 수 없음 | `python3 -m uvicorn server:app --reload --port 8000` 사용 또는 사용자 `bin`을 `PATH`에 추가. |
 | 프론트만 빌드해 올렸는데 API 호출 실패 | `VITE_API_BASE` 설정 후 다시 `npm run build`, CORS에 프론트 도메인 추가. |
+| `npm run dev` 시 `ECONNREFUSED 127.0.0.1:8000` | **저장소 루트**에서 `npm run dev`로 API와 함께 띄우거나, 다른 터미널에서 `python3 -m uvicorn server:app --reload --port 8000` 실행. `web/`만 들어가서 프론트만 켜면 API가 없음. |
+| `Cannot find module 'rxjs'` (concurrently) | 루트에서 `npm install` — `package.json`에 `rxjs`가 명시되어 있습니다. |
 
 ---
 
