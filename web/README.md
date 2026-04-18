@@ -9,3 +9,11 @@ Vite + React + TypeScript UI입니다. **저장소 루트의 [README.md](../READ
 | 주요 소스 | `src/App.tsx`, `src/onboarding.ts`, `src/api.ts`, `src/components/` |
 
 기본 Vite 템플릿 설명은 제거했습니다. ESLint·React Compiler 등은 필요 시 [Vite 문서](https://vite.dev)를 참고하세요.
+
+---
+
+## 권리 및 사용 안내
+
+이 프로젝트는 공모전 제출 준비 중인 작업물로, 현재 오픈소스 라이선스를 적용하지 않습니다.  
+모든 권리는 저작권자에게 있으며, 사전 허가 없는 사용·복제·수정·배포를 금지합니다.  
+(`All rights reserved`)
