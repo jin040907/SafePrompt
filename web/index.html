@@ -2,9 +2,10 @@
 <html lang="ko" data-theme="light">
   <head>
     <meta charset="UTF-8" />
-    <!-- 아이콘 바꿀 때마다 ?v= 숫자만 올리면 배포·브라우저 캐시를 끊을 수 있음 -->
-    <link rel="icon" href="/safeprompt-icon.svg?v=3" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/safeprompt-icon.svg?v=3" />
+    <!-- Chrome은 /favicon.ico 를 따로 요청·캐시함. ico 없으면 SPA 리라이트가 HTML을 줄 수 있어 옛 아이콘이 남기 쉬움 -->
+    <link rel="icon" href="/favicon.ico?v=1" sizes="any" />
+    <link rel="icon" href="/safeprompt-icon.svg?v=4" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/safeprompt-icon.svg?v=4" />
     <meta name="theme-color" content="#4338ca" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link
