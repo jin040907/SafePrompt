@@ -1,7 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Safe Prompt">
-  <rect width="32" height="32" rx="8" fill="#4338ca"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-0.8 -0.8 33.6 33.6" role="img" aria-label="Safe Prompt">
   <path
     fill="#ffffff"
+    stroke="#4338ca"
+    stroke-width="1.15"
+    stroke-linejoin="round"
     d="M16 6.2c.15 0 .3.04.44.12l7.36 3.68c.27.14.44.41.44.71v6.9c0 5.35-3.45 10.2-7.85 11.85-.12.04-.25.06-.38.06-.13 0-.26-.02-.38-.06-4.4-1.65-7.85-6.5-7.85-11.85v-6.9c0-.3.17-.57.44-.71l7.36-3.68c.14-.08.29-.12.44-.12Z"
   />
   <path

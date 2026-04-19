@@ -205,8 +205,7 @@ SafePrompt/
 ├── package.json        # concurrently; `npm run dev` = API(:8000) + Vite(:5173)
 ├── web/
 │   ├── vercel.json
-│   ├── public/         # favicon PNG·SVG 등 정적 자산
-│   ├── scripts/        # gen-favicon-from-hero.py 등
+│   ├── public/         # 파비콘·정적 자산 (예: safeprompt-icon.svg)
 │   ├── src/
 │   │   ├── App.tsx
 │   │   ├── onboarding.ts
@@ -222,8 +221,7 @@ SafePrompt/
 ## 기타 스크립트
 
 - **`python3 test_api.py`** — Groq / HyperCLOVA 연결 여부를 빠르게 확인할 때 사용합니다.  
-- **`python3 pipeline.py`** — 터미널에서 파이프라인 전체를 예시 입력으로 돌려 볼 수 있습니다.  
-- **`python3 web/scripts/gen-favicon-from-hero.py`** — `web/src/assets/hero.png`로부터 `web/public/`의 `favicon-*.png`, `apple-touch-icon.png`, `favicon.ico`를 다시 만들 때 사용합니다(Pillow 필요).
+- **`python3 pipeline.py`** — 터미널에서 파이프라인 전체를 예시 입력으로 돌려 볼 수 있습니다.
 
 ---
 
