@@ -17,16 +17,6 @@ export const HOW_IT_WORKS = [
   '수락하면 그 프롬프트로 AI 답변이 만들어집니다.',
 ]
 
-/** 로컬 개발자가 바로 실행할 수 있도록 한 화면 안내용 */
-export const QUICKSTART_STEPS = [
-  '저장소 루트에 `.env`를 두고 `GROQ_API_KEY`, `CLOVA_API_KEY`를 넣습니다. (`cp .env.example .env` 후 편집)',
-  'Python 의존성: `python3 -m venv .venv` → 활성화 후 `pip install -r requirements.txt`',
-  '한 번에 실행: `npm install` 후 `npm run dev` → API는 8000, 화면은 http://localhost:5173',
-]
-
-/** 복사용 한 줄 (이미 의존성 설치했다면 이것만으로도 됨) */
-export const QUICKSTART_ONE_LINER = 'npm install && npm run dev'
-
 /** 현재 단계에서 사용자가 바로 할 행동을 한 줄로 */
 export const NEXT_STEP_HINT: Record<'input' | 'questions' | 'review' | 'result', string> = {
   input: '질문을 적은 뒤 「분석 시작」— 네트워크에 따라 1~2분 걸릴 수 있어요.',

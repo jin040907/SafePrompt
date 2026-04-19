@@ -12,6 +12,7 @@ OUT = [
     (16, ROOT / "public/favicon-16.png"),
     (180, ROOT / "public/apple-touch-icon.png"),
 ]
+ICO_PATH = ROOT / "public/favicon.ico"
 
 
 def main() -> None:
@@ -24,6 +25,9 @@ def main() -> None:
     for size, path in OUT:
         sq.resize((size, size), Image.Resampling.LANCZOS).save(path, optimize=True)
         print("wrote", path.relative_to(ROOT))
+    img32 = sq.resize((32, 32), Image.Resampling.LANCZOS)
+    img32.save(ICO_PATH, format="ICO", sizes=[(32, 32)])
+    print("wrote", ICO_PATH.relative_to(ROOT))
 
 
 if __name__ == "__main__":

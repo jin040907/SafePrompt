@@ -28,8 +28,6 @@ import {
   GAUGE_EXPLAINER,
   HOW_IT_WORKS,
   NEXT_STEP_HINT,
-  QUICKSTART_ONE_LINER,
-  QUICKSTART_STEPS,
   STEP_HINTS,
   USER_FAQ,
 } from './onboarding'
@@ -156,26 +154,6 @@ function HowItWorks() {
       <summary className="how-it-works__summary">처음이신가요? 이용 순서 보기</summary>
       <ol className="how-it-works__list">
         {HOW_IT_WORKS.map((line, i) => (
-          <li key={i}>{line}</li>
-        ))}
-      </ol>
-    </details>
-  )
-}
-
-function QuickStartLocal() {
-  return (
-    <details className="quick-start">
-      <summary className="quick-start__summary">로컬에서 바로 실행하기</summary>
-      <p className="quick-start__lead">
-        API 키를 넣은 뒤 저장소 <strong>루트</strong>에서 아래를 따르면 됩니다.
-      </p>
-      <div className="quick-start__cmd">
-        <code className="quick-start__code">{QUICKSTART_ONE_LINER}</code>
-        <CopyTextButton text={QUICKSTART_ONE_LINER} label="명령 복사" />
-      </div>
-      <ol className="quick-start__list">
-        {QUICKSTART_STEPS.map((line, i) => (
           <li key={i}>{line}</li>
         ))}
       </ol>
@@ -625,7 +603,6 @@ export default function App() {
               <CardTitle step={1}>질문 입력</CardTitle>
               <CardHint>{STEP_HINTS.input}</CardHint>
               <HowItWorks />
-              <QuickStartLocal />
               <form ref={formRef} onSubmit={onPromptSubmit}>
                 <div className="example-chips" role="group" aria-label="예시 질문">
                   <span className="example-chips__label">예시로 채우기</span>
