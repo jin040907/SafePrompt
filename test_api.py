@@ -38,6 +38,11 @@ def _ssl_context():
 
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
 CLOVA_API_KEY = os.getenv("CLOVA_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip() or "llama-3.3-70b-versatile"
+CLOVA_COMPLETIONS_URL = os.getenv(
+    "CLOVA_COMPLETIONS_URL",
+    "https://clovastudio.stream.ntruss.com/testapp/v3/chat-completions/HCX-005",
+).strip() or "https://clovastudio.stream.ntruss.com/testapp/v3/chat-completions/HCX-005"
 
 def c(text, color):
     codes = {"green":"\033[92m","red":"\033[91m","bold":"\033[1m","reset":"\033[0m"}
@@ -71,7 +76,7 @@ data, err = call_api(
     "https://api.groq.com/openai/v1/chat/completions",
     {"Authorization": f"Bearer {GROQ_API_KEY}"},
     {
-        "model": "llama-3.3-70b-versatile",
+        "model": GROQ_MODEL,
         "messages": [{"role": "user", "content": "Say hello in one sentence."}],
         "max_tokens": 50,
     }
@@ -84,7 +89,7 @@ else:
 # HyperCLOVA X 테스트
 print(f"\n{c('[ HyperCLOVA X API ]', 'bold')}")
 data, err = call_api(
-    "https://clovastudio.stream.ntruss.com/testapp/v3/chat-completions/HCX-005",
+    CLOVA_COMPLETIONS_URL,
     {"Authorization": f"Bearer {CLOVA_API_KEY}"},
     {
         "messages": [{"role": "user", "content": "Say hello in one sentence."}],

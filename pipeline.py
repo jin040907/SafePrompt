@@ -5,8 +5,10 @@ Step 2. Safe Prompt 핵심 파이프라인
 
 import json
 import os
+import random
 import re
 import ssl
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -30,6 +32,22 @@ _load_env()
 
 GROQ_API_KEY  = os.getenv("GROQ_API_KEY", "")
 CLOVA_API_KEY = os.getenv("CLOVA_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile").strip() or "llama-3.3-70b-versatile"
+_DEFAULT_CLOVA_URL = (
+    "https://clovastudio.stream.ntruss.com/testapp/v3/chat-completions/HCX-005"
+)
+CLOVA_COMPLETIONS_URL = os.getenv("CLOVA_COMPLETIONS_URL", _DEFAULT_CLOVA_URL).strip() or _DEFAULT_CLOVA_URL
+
+try:
+    _API_HTTP_TIMEOUT = max(5.0, float(os.getenv("API_HTTP_TIMEOUT", "20")))
+except (TypeError, ValueError):
+    _API_HTTP_TIMEOUT = 20.0
+try:
+    _API_MAX_RETRIES = max(0, min(8, int(os.getenv("API_MAX_RETRIES", "2"))))
+except (TypeError, ValueError):
+    _API_MAX_RETRIES = 2
+
+_RETRYABLE_HTTP = frozenset({429, 502, 503, 504})
 
 _UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -46,20 +64,45 @@ def _ssl():
 
 # ── 공통 API 호출 ──────────────────────────────────────────
 def call_api(url, headers, body):
+    """
+    외부 LLM HTTP API 호출. 일시적 오류(타임아웃·연결·429/502/503/504) 시 지수 백오프로 재시도.
+    환경 변수: API_HTTP_TIMEOUT(초), API_MAX_RETRIES(추가 시도 횟수, 기본 2).
+    """
     payload = json.dumps(body, ensure_ascii=True).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, method="POST")
-    req.add_unredirected_header("Content-Type", "application/json")
-    req.add_unredirected_header("Content-Length", str(len(payload)))
-    req.add_unredirected_header("User-Agent", _UA)
-    for k, v in headers.items():
-        req.add_unredirected_header(k, v)
-    try:
-        with urllib.request.urlopen(req, timeout=20, context=_ssl()) as resp:
-            return json.loads(resp.read().decode("utf-8")), None
-    except urllib.error.HTTPError as e:
-        return None, f"HTTP {e.code}: {e.read().decode('utf-8', errors='replace')[:300]}"
-    except Exception as e:
-        return None, str(e)
+    last_err: str | None = None
+    for attempt in range(_API_MAX_RETRIES + 1):
+        req = urllib.request.Request(url, data=payload, method="POST")
+        req.add_unredirected_header("Content-Type", "application/json")
+        req.add_unredirected_header("Content-Length", str(len(payload)))
+        req.add_unredirected_header("User-Agent", _UA)
+        for k, v in headers.items():
+            req.add_unredirected_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=_API_HTTP_TIMEOUT, context=_ssl()) as resp:
+                return json.loads(resp.read().decode("utf-8")), None
+        except urllib.error.HTTPError as e:
+            body_preview = ""
+            try:
+                body_preview = e.read().decode("utf-8", errors="replace")[:300]
+            except Exception:
+                pass
+            err_msg = f"HTTP {e.code}: {body_preview}"
+            last_err = err_msg
+            if e.code in _RETRYABLE_HTTP and attempt < _API_MAX_RETRIES:
+                delay = (2**attempt) * 0.35 + random.uniform(0, 0.2)
+                time.sleep(delay)
+                continue
+            return None, err_msg
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            last_err = str(e)
+            if attempt < _API_MAX_RETRIES:
+                delay = (2**attempt) * 0.35 + random.uniform(0, 0.2)
+                time.sleep(delay)
+                continue
+            return None, last_err
+        except Exception as e:
+            return None, str(e)
+    return None, last_err or "알 수 없는 오류"
 
 
 def call_groq(messages, max_tokens=800, temperature: float | None = None):
@@ -69,7 +112,7 @@ def call_groq(messages, max_tokens=800, temperature: float | None = None):
         "https://api.groq.com/openai/v1/chat/completions",
         {"Authorization": f"Bearer {GROQ_API_KEY}"},
         {
-            "model": "llama-3.3-70b-versatile",
+            "model": GROQ_MODEL,
             "messages": messages,
             "max_tokens": max_tokens,
             "temperature": t,
@@ -83,7 +126,7 @@ def call_groq(messages, max_tokens=800, temperature: float | None = None):
 def call_clova(messages, max_tokens=800):
     """HyperCLOVA X 호출 — 실패 시 Groq Fallback"""
     data, err = call_api(
-        "https://clovastudio.stream.ntruss.com/testapp/v3/chat-completions/HCX-005",
+        CLOVA_COMPLETIONS_URL,
         {"Authorization": f"Bearer {CLOVA_API_KEY}"},
         {"messages": messages, "maxTokens": max_tokens, "temperature": 0.3}
     )

@@ -1,17 +1,33 @@
-import { useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
+  ApiError,
   apiPost,
+  fetchHealth,
+  friendlyApiError,
   isProductionMissingApiBase,
   type AnswerResponse,
   type ClassifyResponse,
+  type HealthResponse,
   type QuestionsResponse,
   type ReconstructResponse,
 } from './api'
 import { AnswerMarkdown } from './components/AnswerMarkdown'
+import { LocalHistoryPanel } from './components/LocalHistoryPanel'
 import { RiskGauge } from './components/RiskGauge'
+import {
+  appendHistory,
+  defaultExportBasename,
+  downloadTextFile,
+  formatEntryAsMarkdown,
+  formatEntryAsText,
+  loadHistory,
+  type HistoryEntry,
+} from './history'
 import {
   EXAMPLE_PROMPTS,
   HOW_IT_WORKS,
+  QUICKSTART_ONE_LINER,
+  QUICKSTART_STEPS,
   STEP_HINTS,
 } from './onboarding'
 import './App.css'
@@ -64,6 +80,70 @@ function CardHint({ children }: { children: ReactNode }) {
   return <p className="card__hint">{children}</p>
 }
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function CopyTextButton({
+  text,
+  label,
+  className = '',
+}: {
+  text: string
+  label: string
+  className?: string
+}) {
+  const [done, setDone] = useState(false)
+  return (
+    <button
+      type="button"
+      className={`btn btn--ghost btn--compact ${className}`.trim()}
+      onClick={async () => {
+        const ok = await copyToClipboard(text)
+        if (ok) {
+          setDone(true)
+          window.setTimeout(() => setDone(false), 2000)
+        }
+      }}
+    >
+      {done ? '복사됨' : label}
+    </button>
+  )
+}
+
+function ErrorBanner({
+  message,
+  requestId,
+  onDismiss,
+}: {
+  message: string
+  requestId: string | null
+  onDismiss: () => void
+}) {
+  return (
+    <div className="banner banner--err error-banner" role="alert">
+      <div className="error-banner__main">
+        <p className="error-banner__msg">{message}</p>
+        {requestId ? (
+          <div className="error-banner__meta">
+            <span className="error-banner__rid-label">요청 ID</span>
+            <code className="error-banner__rid">{requestId}</code>
+            <CopyTextButton text={requestId} label="ID 복사" />
+          </div>
+        ) : null}
+      </div>
+      <button type="button" className="btn btn--ghost btn--compact error-banner__close" onClick={onDismiss}>
+        닫기
+      </button>
+    </div>
+  )
+}
+
 function HowItWorks() {
   return (
     <details className="how-it-works">
@@ -75,6 +155,59 @@ function HowItWorks() {
       </ol>
     </details>
   )
+}
+
+function QuickStartLocal() {
+  return (
+    <details className="quick-start">
+      <summary className="quick-start__summary">로컬에서 바로 실행하기</summary>
+      <p className="quick-start__lead">
+        API 키를 넣은 뒤 저장소 <strong>루트</strong>에서 아래를 따르면 됩니다.
+      </p>
+      <div className="quick-start__cmd">
+        <code className="quick-start__code">{QUICKSTART_ONE_LINER}</code>
+        <CopyTextButton text={QUICKSTART_ONE_LINER} label="명령 복사" />
+      </div>
+      <ol className="quick-start__list">
+        {QUICKSTART_STEPS.map((line, i) => (
+          <li key={i}>{line}</li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
+function ServiceStatusBanners({
+  health,
+}: {
+  health: HealthResponse | 'offline' | undefined
+}) {
+  if (health === undefined) return null
+  if (health === 'offline') {
+    return (
+      <div className="banner banner--err" role="status">
+        <strong>API에 연결되지 않습니다.</strong> 터미널에서 프로젝트 루트로 이동한 뒤{' '}
+        <code className="inline-code">npm run dev</code>로 백엔드(포트 8000)와 웹을 함께 실행했는지 확인해 주세요.
+      </div>
+    )
+  }
+  if (health.groq_configured === false) {
+    return (
+      <div className="banner banner--err" role="status">
+        <strong>GROQ_API_KEY가 없습니다.</strong> 루트에 <code className="inline-code">.env</code>를 두고
+        Groq 키를 넣은 뒤 API 서버를 다시 시작해 주세요. (위험 분류 등에 필요합니다.)
+      </div>
+    )
+  }
+  if (health.clova_configured === false && health.groq_configured === true) {
+    return (
+      <div className="banner banner--info" role="status">
+        <strong>CLOVA_API_KEY가 비어 있습니다.</strong> 질문 생성·답변은 Groq로 동작할 수 있으나, 설정하면
+        HyperCLOVA를 우선 사용합니다.
+      </div>
+    )
+  }
+  return null
 }
 
 export default function App() {
@@ -92,6 +225,12 @@ export default function App() {
   const getPromptText = () => userInput.trim() || (promptRef.current?.value ?? '').trim()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorRequestId, setErrorRequestId] = useState<string | null>(null)
+  /** 마지막 성공 API 호출의 추적 ID(백엔드 `X-Request-ID`) */
+  const [lastRequestId, setLastRequestId] = useState<string | null>(null)
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>(() => loadHistory())
+  /** GET /health — 연결 여부·API 키 설정(값은 모름) */
+  const [serviceHealth, setServiceHealth] = useState<HealthResponse | 'offline' | undefined>(undefined)
 
   const [classify, setClassify] = useState<ClassifyResponse | null>(null)
   const [questions, setQuestions] = useState<string[]>([])
@@ -124,19 +263,40 @@ export default function App() {
     ))
   }, [questions, answers])
 
+  useEffect(() => {
+    if (step !== 'questions' || questions.length === 0) return
+    const id = window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>('.stack input[type="text"]')?.focus()
+    }, 60)
+    return () => clearTimeout(id)
+  }, [step, questions])
+
+  useEffect(() => {
+    if (isProductionMissingApiBase()) return
+    let cancelled = false
+    void fetchHealth().then((h) => {
+      if (!cancelled) setServiceHealth(h)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   async function runClassify(text: string) {
     if (!text) {
       setError('질문을 입력한 뒤 분석을 시작해 주세요.')
+      setErrorRequestId(null)
       return
     }
     setUserInput(text)
     setError(null)
+    setErrorRequestId(null)
     setLoading(true)
     setClassify(null)
     setQuestions([])
     setAnswers([])
     try {
-      const data = await apiPost<ClassifyResponse>('/classify', {
+      const { data, requestId: rid1 } = await apiPost<ClassifyResponse>('/classify', {
         user_input: text,
       })
       if (
@@ -146,9 +306,10 @@ export default function App() {
         setError(
           `서버가 받은 글자 수(${data.received_chars})와 보낸 글자 수(${text.length})가 다릅니다. 다른 API 인스턴스에 붙었을 수 있습니다. Vercel의 VITE_API_BASE와 Railway 배포를 확인해 주세요.`,
         )
+        setErrorRequestId(rid1)
         return
       }
-      const qs = await apiPost<QuestionsResponse>('/questions', {
+      const { data: qs, requestId: rid2 } = await apiPost<QuestionsResponse>('/questions', {
         user_input: text,
         risk_type: data.risk_type,
       })
@@ -159,15 +320,23 @@ export default function App() {
         setError(
           `질문 생성 단계에서 글자 수 불일치(보냄 ${text.length} / 받음 ${qs.received_chars}). API 주소를 확인해 주세요.`,
         )
+        setErrorRequestId(rid2)
         return
       }
       setLockedPrompt(text)
       setClassify(data)
       setQuestions(qs.questions)
       setAnswers(qs.questions.map(() => ''))
+      setLastRequestId(rid2 ?? rid1)
       setStep('questions')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '분류·질문 생성 실패')
+      if (e instanceof ApiError) {
+        setError(e.message)
+        setErrorRequestId(e.requestId)
+      } else {
+        setError(friendlyApiError(e))
+        setErrorRequestId(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -190,9 +359,10 @@ export default function App() {
     }
     setUserInput(text)
     setError(null)
+    setErrorRequestId(null)
     setLoading(true)
     try {
-      const data = await apiPost<ReconstructResponse>('/reconstruct', {
+      const { data, requestId } = await apiPost<ReconstructResponse>('/reconstruct', {
         user_input: text,
         risk_type: classify.risk_type,
         questions,
@@ -201,9 +371,16 @@ export default function App() {
       })
       setRecon(data)
       setPromptDraft(data.safe_prompt)
+      setLastRequestId(requestId)
       setStep('review')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '프롬프트 재구성 실패')
+      if (e instanceof ApiError) {
+        setError(e.message)
+        setErrorRequestId(e.requestId)
+      } else {
+        setError(friendlyApiError(e))
+        setErrorRequestId(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -217,17 +394,41 @@ export default function App() {
       return
     }
     setError(null)
+    setErrorRequestId(null)
     setLoading(true)
     try {
-      const data = await apiPost<AnswerResponse>('/answer', {
+      const { data, requestId } = await apiPost<AnswerResponse>('/answer', {
         safe_prompt: safe,
         gauge_before: recon.gauge_before,
         answers,
       })
       setResult(data)
+      setLastRequestId(requestId)
       setStep('result')
+
+      if (classify) {
+        appendHistory({
+          userInput: lockedPrompt.trim() || userInput.trim(),
+          riskType: classify.risk_type,
+          gaugeBefore: data.gauge_before,
+          gaugeAfter: data.gauge_after,
+          safePrompt: safe,
+          answer: data.answer,
+          model: data.model,
+          requestId,
+          questions: [...questions],
+          answers: [...answers],
+        })
+        setHistoryEntries(loadHistory())
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '답변 생성 실패')
+      if (e instanceof ApiError) {
+        setError(e.message)
+        setErrorRequestId(e.requestId)
+      } else {
+        setError(friendlyApiError(e))
+        setErrorRequestId(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -244,12 +445,34 @@ export default function App() {
     setPromptDraft('')
     setResult(null)
     setError(null)
+    setErrorRequestId(null)
+    setLastRequestId(null)
+  }
+
+  function loadQuestionFromHistory(text: string) {
+    setStep('input')
+    setUserInput(text)
+    setLockedPrompt('')
+    setClassify(null)
+    setQuestions([])
+    setAnswers([])
+    setRecon(null)
+    setPromptDraft('')
+    setResult(null)
+    setError(null)
+    setErrorRequestId(null)
+    setLastRequestId(null)
+    window.setTimeout(() => {
+      promptRef.current?.focus()
+      promptRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 0)
   }
 
   function rejectPrompt() {
     setRecon(null)
     setPromptDraft('')
     setStep('input')
+    setErrorRequestId(null)
     setError('취소되었습니다. 처음부터 다시 입력할 수 있습니다.')
   }
 
@@ -271,8 +494,32 @@ export default function App() {
   const riskTypeClass =
     classify && classify.gauge_before >= 70 ? 'risk-cell--danger' : 'risk-cell--neutral'
 
+  function exportCurrentResult(kind: 'md' | 'txt') {
+    if (!result || !classify) return
+    const snap: HistoryEntry = {
+      id: 'export',
+      createdAt: new Date().toISOString(),
+      userInput: lockedPrompt.trim() || userInput.trim(),
+      riskType: classify.risk_type,
+      gaugeBefore: result.gauge_before,
+      gaugeAfter: result.gauge_after,
+      safePrompt: promptDraft.trim(),
+      answer: result.answer,
+      model: result.model,
+      requestId: lastRequestId,
+      questions: [...questions],
+      answers: [...answers],
+    }
+    const body = kind === 'md' ? formatEntryAsMarkdown(snap) : formatEntryAsText(snap)
+    const ext = kind === 'md' ? 'md' : 'txt'
+    downloadTextFile(defaultExportBasename(snap, ext), body)
+  }
+
   return (
     <div className="app-shell">
+      <a href="#main-content" className="skip-link">
+        본문으로 건너뛰기
+      </a>
       <header className="top-nav">
         <div className="top-nav__brand">
           <h1 className="top-nav__logo">Safe Prompt</h1>
@@ -285,6 +532,11 @@ export default function App() {
       <div className="app-body">
         <StepPills step={step} />
 
+        <div
+          className={`loading-strip ${loading ? 'is-active' : ''}`}
+          aria-hidden={!loading}
+        />
+
         <p className="sr-only" aria-live="polite">
           {loading ? '요청을 처리하고 있습니다. 잠시만 기다려 주세요.' : ''}
         </p>
@@ -295,20 +547,34 @@ export default function App() {
             Redeploy 하지 않으면 브라우저가 잘못된 주소(로컬 등)로 요청해 결과가 항상 같게 보일 수
             있습니다.
           </div>
-        ) : null}
+        ) : (
+          <ServiceStatusBanners health={serviceHealth} />
+        )}
 
         {error ? (
-          <div className="banner banner--err" role="alert">
-            {error}
-          </div>
+          <ErrorBanner
+            message={error}
+            requestId={errorRequestId}
+            onDismiss={() => {
+              setError(null)
+              setErrorRequestId(null)
+            }}
+          />
         ) : null}
 
-        <main className="main">
+        <LocalHistoryPanel
+          entries={historyEntries}
+          onEntriesChange={setHistoryEntries}
+          onLoadQuestion={loadQuestionFromHistory}
+        />
+
+        <main id="main-content" className="main" aria-busy={loading}>
           {step === 'input' && (
             <section className="card">
               <CardTitle step={1}>질문 입력</CardTitle>
               <CardHint>{STEP_HINTS.input}</CardHint>
               <HowItWorks />
+              <QuickStartLocal />
               <form ref={formRef} onSubmit={onPromptSubmit}>
                 <div className="example-chips" role="group" aria-label="예시 질문">
                   <span className="example-chips__label">예시로 채우기</span>
@@ -343,8 +609,11 @@ export default function App() {
                   }}
                   placeholder="예: 위와 같이 궁금한 내용을 한글로 적어 주세요."
                   disabled={loading}
-                  aria-describedby="hint-input-shortcut"
+                  aria-describedby="hint-input-shortcut char-count-hint"
                 />
+                <p id="char-count-hint" className="char-count" aria-live="polite">
+                  {userInput.length.toLocaleString()}자
+                </p>
                 <p id="hint-input-shortcut" className="kbd-hint">
                   입력 후 <kbd className="kbd">Ctrl</kbd> + <kbd className="kbd">Enter</kbd> (Mac은{' '}
                   <kbd className="kbd">⌘</kbd> + <kbd className="kbd">Enter</kbd>)로도 분석을 시작할 수
@@ -420,7 +689,10 @@ export default function App() {
                   →
                 </div>
                 <div>
-                  <p className="compare__label">다듬어진 프롬프트</p>
+                  <div className="compare__label-row">
+                    <p className="compare__label">다듬어진 프롬프트</p>
+                    <CopyTextButton text={promptDraft} label="프롬프트 복사" />
+                  </div>
                   <textarea
                     ref={promptRef}
                     className="textarea textarea--prompt"
@@ -476,8 +748,18 @@ export default function App() {
             <section className="card">
               <CardTitle step={4}>답변</CardTitle>
               <CardHint>{STEP_HINTS.result}</CardHint>
-              <p className="meta">
+              <p className="meta meta--wrap">
                 모델: <strong>{result.model}</strong>
+                {lastRequestId ? (
+                  <>
+                    {' '}
+                    · 요청 ID{' '}
+                    <code className="meta__rid" title="백엔드 로그와 대조할 때 사용">
+                      {lastRequestId}
+                    </code>{' '}
+                    <CopyTextButton text={lastRequestId} label="복사" />
+                  </>
+                ) : null}
               </p>
               <div className="gauges-row gauges-row--compact">
                 <RiskGauge variant="card" value={result.gauge_before} label="교정 전" />
@@ -501,6 +783,15 @@ export default function App() {
               <article className="answer-box answer-box--md" aria-label="생성된 답변">
                 <AnswerMarkdown>{result.answer}</AnswerMarkdown>
               </article>
+              <div className="answer-actions answer-actions--after-answer">
+                <CopyTextButton text={result.answer} label="답변 전체 복사" />
+                <button type="button" className="btn btn--secondary btn--compact" onClick={() => exportCurrentResult('md')}>
+                  Markdown 저장
+                </button>
+                <button type="button" className="btn btn--secondary btn--compact" onClick={() => exportCurrentResult('txt')}>
+                  텍스트 저장
+                </button>
+              </div>
               <div className="actions">
                 <button type="button" className="btn btn--primary" onClick={resetAll}>
                   다른 질문 하기
@@ -511,7 +802,8 @@ export default function App() {
         </main>
 
         <footer className="footer">
-          개인 질문·답변은 서버에 저장되지 않습니다. 공공 PC에서는 사용 후 브라우저 탭을 닫아 주세요.
+          개인 질문·답변은 서버에 저장되지 않습니다. 로컬 기록은 이 브라우저에만 남으며 다른 기기와
+          동기화되지 않습니다. 공공 PC에서는 사용 후 브라우저 탭을 닫아 주세요.
         </footer>
       </div>
     </div>

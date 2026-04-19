@@ -8,10 +8,14 @@ API만: python3 -m uvicorn server:app --reload --port 8000
 """
 
 import os
+import uuid
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 from typing import Optional
 
 from pipeline import (
@@ -43,11 +47,27 @@ def _cors_allow_origins() -> list[str]:
 
 app = FastAPI(title="Safe Prompt API")
 
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    """클라이언트가 보낸 X-Request-ID를 유지하고, 없으면 UUID를 부여해 응답 헤더로 돌려준다."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        rid = (request.headers.get("X-Request-ID") or "").strip()
+        if not rid or len(rid) > 128:
+            rid = str(uuid.uuid4())
+        request.state.request_id = rid
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = rid
+        return response
+
+
+app.add_middleware(RequestIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allow_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
 
 
@@ -108,7 +128,16 @@ def root():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    """프론트가 연결·환경을 안내할 수 있도록 키 설정 여부만 반환(값은 노출하지 않음)."""
+    groq = bool(os.getenv("GROQ_API_KEY", "").strip())
+    clova = bool(os.getenv("CLOVA_API_KEY", "").strip())
+    return {
+        "status": "healthy",
+        "service": "Safe Prompt API",
+        "groq_configured": groq,
+        "clova_configured": clova,
+        "ready": groq and clova,
+    }
 
 
 @app.post("/classify", response_model=ClassifyResponse)
