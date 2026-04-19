@@ -34,7 +34,7 @@
    - Vercel 주소가 정해지면: `FRONTEND_URL=https://프로젝트.vercel.app`
    - 여러 개면: `CORS_ORIGINS=https://a.vercel.app,https://b.vercel.app`
 
-헬스 체크: 브라우저에서 `https://(API주소)/health` → `{"status":"healthy"}`
+헬스 체크: 브라우저에서 `https://(API주소)/health` → 예: `{"status":"healthy","groq_configured":true,"clova_configured":true,"ready":true}` (키 값은 노출되지 않음)
 
 ### 방법 B: Render + Docker
 

@@ -1,5 +1,6 @@
 """
-Step 1. API 연결 테스트
+Groq·HyperCLOVA HTTP 연결 스모크 테스트 (저장소 루트 `.env`의 키 사용).
+`GROQ_MODEL`, `CLOVA_COMPLETIONS_URL`은 `pipeline.py`와 동일하게 지원합니다.
 실행: python3 test_api.py
 """
 

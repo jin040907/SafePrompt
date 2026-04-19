@@ -6,7 +6,7 @@ Vite + React + TypeScript UI입니다. **저장소 루트의 [README.md](../READ
 |------|------|
 | 로컬 개발 | 저장소 루트에서 `npm run dev` (API + Vite 동시) 또는 `npm run dev -w web` (프론트만) |
 | 배포 | Vercel에서 **Root Directory = `web`**, 환경 변수 `VITE_API_BASE` — 자세한 내용은 [DEPLOY.md](../DEPLOY.md) |
-| 주요 소스 | `src/App.tsx`, `src/onboarding.ts`, `src/api.ts`, `src/components/` |
+| 주요 소스 | `src/App.tsx`, `src/onboarding.ts`, `src/api.ts`, `src/history.ts`(로컬 기록), `src/components/` |
 
 기본 Vite 템플릿 설명은 제거했습니다. ESLint·React Compiler 등은 필요 시 [Vite 문서](https://vite.dev)를 참고하세요.
 

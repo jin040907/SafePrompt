@@ -1,5 +1,6 @@
 """
-Step 2. Safe Prompt 핵심 파이프라인
+Safe Prompt 핵심 파이프라인 — 위험 분류, 의도 확인 질문, 프롬프트 재구성, 답변.
+루트 `.env`에서 키·선택 옵션(`GROQ_MODEL`, `CLOVA_COMPLETIONS_URL`, `API_HTTP_TIMEOUT` 등)을 읽습니다.
 실행: python3 pipeline.py
 """
 

@@ -1,10 +1,11 @@
 """
-Step 5. Safe Prompt FastAPI 서버
+Safe Prompt FastAPI 서버 — `/classify`, `/questions`, `/reconstruct`, `/answer`, `/health` 등.
 설치: pip install -r requirements.txt
-한 번에 실행(API+프론트): npm install && npm run dev  → API :8000, UI http://localhost:5173
-API만: python3 -m uvicorn server:app --reload --port 8000
+한 번에 실행(API+프론트): npm install && npm run dev → API :8000, UI http://localhost:5173
+API만: python3 -m uvicorn server:app --reload --host 127.0.0.1 --port 8000
 
-배포 시 CORS: 환경 변수 CORS_ORIGINS(쉼표 구분) 또는 FRONTEND_URL 에 Vercel 등 프론트 URL 을 넣으세요.
+배포 시 CORS: 환경 변수 CORS_ORIGINS(쉼표 구분) 또는 FRONTEND_URL.
+`pipeline`과 동일하게 루트 `.env`의 API 키를 사용합니다.
 """
 
 import os

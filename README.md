@@ -47,11 +47,14 @@
 |------|------|
 | **이용 순서** | 첫 화면에서 「처음이신가요?」를 펼치면 4단계 요약을 볼 수 있습니다. |
 | **예시로 채우기** | 교육·일상·의료·개발·직장·학문 등 맥락별 샘플을 누르면 입력란이 채워집니다. |
-| **단계별 안내** | 각 카드 상단에 해당 단계에서 할 일이 한 줄로 설명됩니다. |
-| **단축키** | 질문 입력 후 **Ctrl + Enter** (Mac: **⌘ + Enter**)로 분석을 시작할 수 있습니다. |
-| **접근성** | 처리 중일 때 스크린 리더용 안내(`aria-live`)가 갱신됩니다. |
+| **단계별 안내** | 진행 칩 아래에 **이 단계에서 할 일**이 한 줄로 나오고, 카드 상단에도 단계 설명이 있습니다. |
+| **로컬 기록** | 답변까지 완료한 세션만 브라우저에 저장·내보내기·세부 보기(교정 프롬프트·답변)가 가능합니다. |
+| **자주 묻는 질문** | 저장·위험도 해석 등 1단계 카드 하단에서 확인할 수 있습니다. |
+| **단축키** | 질문 입력 후 **Ctrl + Enter** (Mac: **⌘ + Enter**)로 분석을 시작할 수 있습니다. 오류 배너는 **Esc**로 닫을 수 있습니다. |
+| **레이아웃** | 넓은 화면에서는 본문과 **로컬 기록**이 나란히 보이도록 배치됩니다. |
+| **접근성** | 처리 중일 때 스크린 리더용 안내(`aria-live`)가 단계별로 갱신됩니다. |
 
-문구·예시는 `web/src/onboarding.ts`에서 수정할 수 있습니다.
+문구·예시·FAQ는 `web/src/onboarding.ts`에서 수정할 수 있습니다.
 
 ---
 
@@ -59,7 +62,7 @@
 
 - **Python** 3.11 이상  
 - **Node.js** 18 이상 (npm)  
-- **API 키**: Groq, Naver Cloud HyperCLOVA X(CLOVA Studio) — `pipeline.py`에서 사용  
+- **API 키**: **Groq**(위험 분류 등에 필요), **Naver Cloud HyperCLOVA X**(질문·재구성·답변 우선 경로) — `pipeline.py`에서 사용. CLOVA만 없을 때는 일부 단계에서 Groq 폴백이 동작할 수 있습니다.
 
 ---
 
@@ -92,6 +95,10 @@ cp .env.example .env
 |------|------|
 | `GROQ_API_KEY` | Groq API — 위험 분류 등에 사용 |
 | `CLOVA_API_KEY` | HyperCLOVA X — 질문 생성·프롬프트 재구성·답변(주 경로) |
+| `GROQ_MODEL` | (선택) Groq 채팅 모델 ID, 기본 `llama-3.3-70b-versatile` |
+| `CLOVA_COMPLETIONS_URL` | (선택) HyperCLOVA 채팅 완성 API 전체 URL |
+| `API_HTTP_TIMEOUT` | (선택) 외부 LLM HTTP 타임아웃(초), 기본 20 |
+| `API_MAX_RETRIES` | (선택) 일시 오류 시 추가 재시도 횟수, 기본 2 |
 | `FRONTEND_URL` | (배포 시 선택) Vercel 등 **프론트 공개 URL** 하나 — CORS 허용 |
 | `CORS_ORIGINS` | (배포 시 선택) 허용 오리진을 쉼표로 여러 개 (`https://a.app,https://b.app`) |
 
@@ -147,14 +154,14 @@ npm run dev -w web
 | 메서드 | 경로 | 설명 |
 |--------|------|------|
 | `GET` | `/` | 서비스 이름 확인 |
-| `GET` | `/health` | 헬스 체크 |
+| `GET` | `/health` | 상태·**API 키 설정 여부**(`groq_configured`, `clova_configured`, `ready` 등, 비밀 값 없음). 프론트가 연결 안내에 사용 |
 | `POST` | `/classify` | 위험 유형 + 게이지 (+ `received_chars` 등) |
 | `POST` | `/questions` | 의도 확인 질문 목록 |
 | `POST` | `/reconstruct` | 교정 프롬프트 + 게이지 전후 |
 | `POST` | `/answer` | 최종 답변 |
 | `POST` | `/pipeline` | 전체 파이프라인 일괄 실행(테스트용) |
 
-CORS는 로컬(`localhost:3000`, `5173` 등)에 더해 환경 변수 **`FRONTEND_URL`**(한 개) 또는 **`CORS_ORIGINS`**(쉼표 구분)로 프로덕션 프론트 도메인을 넣을 수 있습니다. `server.py`의 `_cors_allow_origins()`를 참고하세요.
+CORS는 로컬(`localhost:3000`, `5173` 등)에 더해 환경 변수 **`FRONTEND_URL`**(한 개) 또는 **`CORS_ORIGINS`**(쉼표 구분)로 프로덕션 프론트 도메인을 넣을 수 있습니다. `server.py`의 `_cors_allow_origins()`를 참고하세요. 응답에는 요청 추적용 **`X-Request-ID`** 헤더가 붙습니다.
 
 ---
 
@@ -186,7 +193,7 @@ cd web && npm run build
 
 ```
 SafePrompt/
-├── server.py           # FastAPI 앱·라우트
+├── server.py           # FastAPI 앱·라우트·/health·CORS·요청 ID
 ├── pipeline.py         # LLM 호출·위험 분류·재구성·답변
 ├── serve.py            # 프로덕션 진입점(PORT 읽어 uvicorn 실행) — Dockerfile / Procfile
 ├── test_api.py         # Groq·HyperCLOVA 연결 스모크 테스트
@@ -194,14 +201,18 @@ SafePrompt/
 ├── Dockerfile
 ├── Procfile
 ├── DEPLOY.md
-├── package.json        # concurrently + rxjs; `npm run dev` = API + Vite
+├── SECURITY.md
+├── package.json        # concurrently; `npm run dev` = API(:8000) + Vite(:5173)
 ├── web/
-│   ├── vercel.json     # Vercel — 프로젝트 Root Directory 를 `web` 으로 둘 때
+│   ├── vercel.json
+│   ├── public/         # favicon PNG·SVG 등 정적 자산
+│   ├── scripts/        # gen-favicon-from-hero.py 등
 │   ├── src/
 │   │   ├── App.tsx
 │   │   ├── onboarding.ts
 │   │   ├── api.ts
-│   │   └── components/ # RiskGauge, AnswerMarkdown 등
+│   │   ├── history.ts  # 로컬 기록(localStorage)
+│   │   └── components/ # RiskGauge, AnswerMarkdown, LocalHistoryPanel 등
 │   └── vite.config.ts
 └── .env.example
 ```
@@ -211,7 +222,8 @@ SafePrompt/
 ## 기타 스크립트
 
 - **`python3 test_api.py`** — Groq / HyperCLOVA 연결 여부를 빠르게 확인할 때 사용합니다.  
-- **`python3 pipeline.py`** — 터미널에서 파이프라인 전체를 예시 입력으로 돌려 볼 수 있습니다.
+- **`python3 pipeline.py`** — 터미널에서 파이프라인 전체를 예시 입력으로 돌려 볼 수 있습니다.  
+- **`python3 web/scripts/gen-favicon-from-hero.py`** — `web/src/assets/hero.png`로부터 `web/public/` 파비콘 PNG를 다시 생성할 때 사용합니다(Pillow 필요).
 
 ---
 
@@ -224,6 +236,7 @@ SafePrompt/
 | `uvicorn` 명령을 찾을 수 없음 | `python3 -m uvicorn server:app --reload --port 8000` 사용 또는 사용자 `bin`을 `PATH`에 추가. |
 | 프론트만 빌드해 올렸는데 API 호출 실패 | `VITE_API_BASE` 설정 후 다시 `npm run build`, CORS에 프론트 도메인 추가. |
 | `npm run dev` 시 `ECONNREFUSED 127.0.0.1:8000` | **저장소 루트**에서 `npm run dev`로 API와 함께 띄우거나, 다른 터미널에서 `python3 -m uvicorn server:app --reload --port 8000` 실행. `web/`만 들어가서 프론트만 켜면 API가 없음. |
+| 화면에 GROQ 키 없음·API 연결 실패 안내 | 루트 `.env`에 키를 넣고 **API 프로세스(uvicorn)를 재시작**했는지 확인하세요. `GET /health`로 키 설정 여부만 확인할 수 있습니다. |
 | `Cannot find module 'rxjs'` (concurrently) | 루트에서 `npm install` — `package.json`에 `rxjs`가 명시되어 있습니다. |
 
 ---

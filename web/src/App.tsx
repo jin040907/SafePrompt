@@ -25,10 +25,13 @@ import {
 } from './history'
 import {
   EXAMPLE_PROMPTS,
+  GAUGE_EXPLAINER,
   HOW_IT_WORKS,
+  NEXT_STEP_HINT,
   QUICKSTART_ONE_LINER,
   QUICKSTART_STEPS,
   STEP_HINTS,
+  USER_FAQ,
 } from './onboarding'
 import './App.css'
 
@@ -136,6 +139,9 @@ function ErrorBanner({
             <CopyTextButton text={requestId} label="ID 복사" />
           </div>
         ) : null}
+        <p className="error-banner__kbd-hint">
+          <kbd className="kbd">Esc</kbd> 키로도 닫을 수 있어요
+        </p>
       </div>
       <button type="button" className="btn btn--ghost btn--compact error-banner__close" onClick={onDismiss}>
         닫기
@@ -174,6 +180,32 @@ function QuickStartLocal() {
         ))}
       </ol>
     </details>
+  )
+}
+
+function StepNextHint({ step }: { step: Step }) {
+  return (
+    <p className="step-next-hint" id="step-next-hint">
+      <span className="step-next-hint__label">이 단계에서</span> {NEXT_STEP_HINT[step]}
+    </p>
+  )
+}
+
+function UserFaqSection() {
+  return (
+    <section className="user-faq" aria-labelledby="user-faq-title">
+      <h3 id="user-faq-title" className="user-faq__title">
+        자주 묻는 질문
+      </h3>
+      <div className="user-faq__list">
+        {USER_FAQ.map((item, i) => (
+          <details key={i} className="user-faq__item">
+            <summary className="user-faq__q">{item.q}</summary>
+            <p className="user-faq__a">{item.a}</p>
+          </details>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -231,6 +263,8 @@ export default function App() {
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>(() => loadHistory())
   /** GET /health — 연결 여부·API 키 설정(값은 모름) */
   const [serviceHealth, setServiceHealth] = useState<HealthResponse | 'offline' | undefined>(undefined)
+  /** 스크린 리더용 로딩 설명 */
+  const [loadingHint, setLoadingHint] = useState<string | null>(null)
 
   const [classify, setClassify] = useState<ClassifyResponse | null>(null)
   const [questions, setQuestions] = useState<string[]>([])
@@ -282,6 +316,18 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!error) return
+    function onKey(ev: KeyboardEvent) {
+      if (ev.key !== 'Escape') return
+      ev.preventDefault()
+      setError(null)
+      setErrorRequestId(null)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [error])
+
   async function runClassify(text: string) {
     if (!text) {
       setError('질문을 입력한 뒤 분석을 시작해 주세요.')
@@ -291,6 +337,7 @@ export default function App() {
     setUserInput(text)
     setError(null)
     setErrorRequestId(null)
+    setLoadingHint('질문을 분석하고 확인 질문을 만드는 중입니다. 네트워크에 따라 1~2분 걸릴 수 있습니다.')
     setLoading(true)
     setClassify(null)
     setQuestions([])
@@ -338,6 +385,7 @@ export default function App() {
         setErrorRequestId(null)
       }
     } finally {
+      setLoadingHint(null)
       setLoading(false)
     }
   }
@@ -360,6 +408,7 @@ export default function App() {
     setUserInput(text)
     setError(null)
     setErrorRequestId(null)
+    setLoadingHint('교정된 프롬프트를 만드는 중입니다.')
     setLoading(true)
     try {
       const { data, requestId } = await apiPost<ReconstructResponse>('/reconstruct', {
@@ -382,6 +431,7 @@ export default function App() {
         setErrorRequestId(null)
       }
     } finally {
+      setLoadingHint(null)
       setLoading(false)
     }
   }
@@ -395,6 +445,7 @@ export default function App() {
     }
     setError(null)
     setErrorRequestId(null)
+    setLoadingHint('답변을 생성하는 중입니다.')
     setLoading(true)
     try {
       const { data, requestId } = await apiPost<AnswerResponse>('/answer', {
@@ -430,6 +481,7 @@ export default function App() {
         setErrorRequestId(null)
       }
     } finally {
+      setLoadingHint(null)
       setLoading(false)
     }
   }
@@ -521,54 +573,53 @@ export default function App() {
         본문으로 건너뛰기
       </a>
       <header className="top-nav">
-        <div className="top-nav__brand">
-          <h1 className="top-nav__logo">Safe Prompt</h1>
-          <p className="top-nav__tagline">
-            질문의 위험도를 확인하고, 의도를 확인한 뒤 안전하게 다듬은 프롬프트로 답변을 받습니다.
-          </p>
+        <div className="top-nav__inner">
+          <div className="top-nav__brand">
+            <h1 className="top-nav__logo">Safe Prompt</h1>
+            <p className="top-nav__tagline">
+              질문의 위험도를 확인하고, 의도를 확인한 뒤 안전하게 다듬은 프롬프트로 답변을 받습니다.
+            </p>
+          </div>
         </div>
       </header>
 
       <div className="app-body">
-        <StepPills step={step} />
+        <div className="app-body__inner">
+          <div className="app-body__center">
+            <StepPills step={step} />
+            <StepNextHint step={step} />
 
-        <div
-          className={`loading-strip ${loading ? 'is-active' : ''}`}
-          aria-hidden={!loading}
-        />
+            <div
+              className={`loading-strip ${loading ? 'is-active' : ''}`}
+              aria-hidden={!loading}
+            />
 
-        <p className="sr-only" aria-live="polite">
-          {loading ? '요청을 처리하고 있습니다. 잠시만 기다려 주세요.' : ''}
-        </p>
+            <p className="sr-only" aria-live="polite">
+              {loading ? loadingHint ?? '요청을 처리하고 있습니다. 잠시만 기다려 주세요.' : ''}
+            </p>
 
-        {isProductionMissingApiBase() ? (
-          <div className="banner banner--err" role="alert">
-            <strong>VITE_API_BASE가 없습니다.</strong> Vercel 환경 변수에 Railway API URL을 넣고
-            Redeploy 하지 않으면 브라우저가 잘못된 주소(로컬 등)로 요청해 결과가 항상 같게 보일 수
-            있습니다.
-          </div>
-        ) : (
-          <ServiceStatusBanners health={serviceHealth} />
-        )}
+            {isProductionMissingApiBase() ? (
+              <div className="banner banner--err" role="alert">
+                <strong>VITE_API_BASE가 없습니다.</strong> Vercel 환경 변수에 Railway API URL을 넣고
+                Redeploy 하지 않으면 브라우저가 잘못된 주소(로컬 등)로 요청해 결과가 항상 같게 보일 수
+                있습니다.
+              </div>
+            ) : (
+              <ServiceStatusBanners health={serviceHealth} />
+            )}
 
-        {error ? (
-          <ErrorBanner
-            message={error}
-            requestId={errorRequestId}
-            onDismiss={() => {
-              setError(null)
-              setErrorRequestId(null)
-            }}
-          />
-        ) : null}
+            {error ? (
+              <ErrorBanner
+                message={error}
+                requestId={errorRequestId}
+                onDismiss={() => {
+                  setError(null)
+                  setErrorRequestId(null)
+                }}
+              />
+            ) : null}
 
-        <LocalHistoryPanel
-          entries={historyEntries}
-          onEntriesChange={setHistoryEntries}
-          onLoadQuestion={loadQuestionFromHistory}
-        />
-
-        <main id="main-content" className="main" aria-busy={loading}>
+            <main id="main-content" className="main" aria-busy={loading} aria-describedby="step-next-hint">
           {step === 'input' && (
             <section className="card">
               <CardTitle step={1}>질문 입력</CardTitle>
@@ -629,6 +680,7 @@ export default function App() {
                   </button>
                 </div>
               </form>
+              <UserFaqSection />
             </section>
           )}
 
@@ -649,6 +701,7 @@ export default function App() {
                 </tbody>
               </table>
               <RiskGauge value={classify.gauge_before} label="위험도" />
+              <p className="gauge-explain">{GAUGE_EXPLAINER}</p>
               <h3 className="h3">확인 질문</h3>
               <div className="stack">{answerInputs}</div>
               <div className="actions">
@@ -673,6 +726,11 @@ export default function App() {
                   {loading ? '만드는 중…' : '안전한 프롬프트 만들기'}
                 </button>
               </div>
+              {!answersComplete && questions.length > 0 ? (
+                <p className="action-hint" role="status">
+                  확인 질문 {questions.length}개 모두에 답하면 다음 단계로 갈 수 있어요.
+                </p>
+              ) : null}
             </section>
           )}
 
@@ -799,7 +857,17 @@ export default function App() {
               </div>
             </section>
           )}
-        </main>
+            </main>
+          </div>
+
+          <aside className="app-sidebar" aria-label="로컬에 저장된 기록">
+            <LocalHistoryPanel
+              entries={historyEntries}
+              onEntriesChange={setHistoryEntries}
+              onLoadQuestion={loadQuestionFromHistory}
+            />
+          </aside>
+        </div>
 
         <footer className="footer">
           개인 질문·답변은 서버에 저장되지 않습니다. 로컬 기록은 이 브라우저에만 남으며 다른 기기와

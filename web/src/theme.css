@@ -53,5 +53,9 @@ html[data-theme='light'] {
   --radius-full: 9999px;
 
   --space-section: 1.5rem;
-  --content-max: 42rem;
+  /* 단일 열·카드 안 가독성 */
+  --content-max: min(56rem, 100%);
+  /* 전체 앱 가로 폭(데스크톱에서 양옆 활용) */
+  --app-layout-max: min(96vw, 88rem);
+  --sidebar-width: 19rem;
 }
