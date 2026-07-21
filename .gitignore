@@ -36,3 +36,7 @@ Thumbs.db
 htmlcov/
 .pytest_cache/
 .mypy_cache/
+
+# 대용량 미디어 (GitHub 100MB 제한)
+*.mov
+*.mp4

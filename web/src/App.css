@@ -739,6 +739,12 @@
   font-weight: 600;
 }
 
+.info-table td.classify-reason {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
 .h3 {
   margin: 1.1rem 0 0.6rem;
   font-size: 0.8125rem;

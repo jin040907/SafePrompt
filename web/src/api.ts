@@ -101,6 +101,8 @@ export async function apiPost<T>(path: string, body: unknown): Promise<ApiSucces
 export type ClassifyResponse = {
   risk_type: string
   gauge_before: number
+  /** 위험 유형·점수에 대한 AI 분류 근거(한 줄). 구버전 API는 없을 수 있음 */
+  reason?: string
   /** 최신 API만 포함. 없으면 글자 수 검증 생략 */
   received_chars?: number
 }

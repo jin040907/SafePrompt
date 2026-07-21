@@ -362,7 +362,16 @@ def _score_from_dimension_triple(parsed: dict) -> int | None:
     return max(0, min(100, int(round((a + b + c) / 30.0 * 100))))
 
 
-def _parse_classify_llm_json(result: str) -> tuple[str, int] | None:
+def _parse_classify_reason(parsed: dict) -> str:
+    """분류 JSON의 reason 필드를 한 줄 설명으로 정규화."""
+    raw = parsed.get("reason")
+    if raw is None:
+        return ""
+    text = re.sub(r"\s+", " ", str(raw).strip())
+    return text[:280] if len(text) > 280 else text
+
+
+def _parse_classify_llm_json(result: str) -> tuple[str, int, str] | None:
     """모델이 앞뒤 설명·마크다운을 섞어도 JSON 한 덩어리만 찾아 파싱."""
     raw = (result or "").strip()
     if not raw:
@@ -393,22 +402,23 @@ def _parse_classify_llm_json(result: str) -> tuple[str, int] | None:
             rt = str(parsed.get("risk_type", "")).strip()
             if not rt:
                 continue
+            reason = _parse_classify_reason(parsed)
             dim_score = _score_from_dimension_triple(parsed)
             if dim_score is not None:
-                return rt, dim_score
+                return rt, dim_score, reason
             if "score" in parsed:
                 sc = int(parsed.get("score", 50))
-                return rt, max(0, min(100, sc))
+                return rt, max(0, min(100, sc)), reason
         except (json.JSONDecodeError, TypeError, ValueError):
             continue
     return None
 
 
 # ── 1단계: 위험 분류 ───────────────────────────────────────
-def classify_risk(user_input: str) -> tuple[str, int]:
+def classify_risk(user_input: str) -> tuple[str, int, str]:
     """
-    위험 유형 분류 + 게이지 수치(0~100) 반환
-    반환: (risk_type, gauge_score)
+    위험 유형 분류 + 게이지 수치(0~100) + 분류 근거 한 줄 반환
+    반환: (risk_type, gauge_score, reason)
     """
     info("GPT 프롬프트 기반 위험 유형 분류 중...")
 
@@ -434,16 +444,19 @@ def classify_risk(user_input: str) -> tuple[str, int]:
         temperature=0.42,
     )
     if not result:
-        return "알 수 없음", 50
+        return "알 수 없음", 50, "분류 API 호출에 실패했습니다."
 
     parsed = _parse_classify_llm_json(result)
     if parsed:
-        return parsed
+        rt, score, reason = parsed
+        if not reason:
+            reason = f"'{rt}' 유형으로 분류되었습니다."
+        return rt, score, reason
 
     for rt in ["윤리", "보안", "편향", "오남용", "안전"]:
         if rt in result:
-            return rt, 70
-    return "알 수 없음", 50
+            return rt, 70, "모델 응답에서 유형 키워드를 추출했습니다."
+    return "알 수 없음", 50, "분류 결과를 해석하지 못했습니다."
 
 
 # ── 2단계: 의도 확인 질문 생성 ────────────────────────────
@@ -638,8 +651,10 @@ def run_pipeline(user_input: str, user_answers: list[str] | None = None):
 
     # 1단계: 위험 분류
     step(1, "위험 유형 분류")
-    risk_type, gauge_before = classify_risk(user_input)
+    risk_type, gauge_before, classify_reason = classify_risk(user_input)
     ok(f"위험 유형: {c(risk_type, 'red')}  |  위험도 게이지(교정 전): {c(str(gauge_before), 'red')}/100")
+    if classify_reason:
+        info(f"분류 근거: {classify_reason}")
 
     # 2단계: 질문 생성
     step(2, "의도 확인 질문 생성")

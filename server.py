@@ -80,6 +80,10 @@ class ClassifyRequest(BaseModel):
 class ClassifyResponse(BaseModel):
     risk_type: str
     gauge_before: int
+    reason: str = Field(
+        "",
+        description="위험 유형·점수에 대한 AI 분류 근거(한 줄). 참고용",
+    )
     received_chars: int = Field(
         ...,
         description="서버가 받은 user_input 길이(공백 제거 후). 프론트와 불일치하면 요청 경로를 의심",
@@ -147,10 +151,11 @@ def classify(req: ClassifyRequest):
     if not req.user_input.strip():
         raise HTTPException(status_code=400, detail="입력이 비어 있습니다")
     raw = req.user_input.strip()
-    risk_type, gauge_before = classify_risk(req.user_input)
+    risk_type, gauge_before, reason = classify_risk(req.user_input)
     return ClassifyResponse(
         risk_type=risk_type,
         gauge_before=gauge_before,
+        reason=reason,
         received_chars=len(raw),
     )
 
@@ -180,7 +185,7 @@ def reconstruct(req: ReconstructRequest):
     if req.gauge_before is not None:
         gauge_before = max(0, min(100, req.gauge_before))
     else:
-        _, gauge_before = classify_risk(req.user_input)
+        _, gauge_before, _ = classify_risk(req.user_input)
     safe_prompt = reconstruct_prompt(
         req.user_input, req.risk_type, req.questions, req.answers
     )
@@ -216,7 +221,7 @@ class PipelineRequest(BaseModel):
 @app.post("/pipeline")
 def pipeline(req: PipelineRequest):
     """전체 파이프라인 한 번에 실행 (프론트 연결 전 테스트용)"""
-    risk_type, gauge_before = classify_risk(req.user_input)
+    risk_type, gauge_before, classify_reason = classify_risk(req.user_input)
     questions = generate_questions(req.user_input, risk_type)
 
     answers = req.answers or ["예"] * len(questions)
@@ -231,6 +236,7 @@ def pipeline(req: PipelineRequest):
         "risk_type": risk_type,
         "gauge_before": gauge_before,
         "gauge_after": gauge_after,
+        "reason": classify_reason,
         "questions": questions,
         "safe_prompt": safe_prompt,
         "answer": answer,

@@ -675,6 +675,12 @@ export default function App() {
                     <th scope="row">위험도</th>
                     <td>{classify.gauge_before} / 100</td>
                   </tr>
+                  {classify.reason?.trim() ? (
+                    <tr>
+                      <th scope="row">분류 근거</th>
+                      <td className="classify-reason">{classify.reason.trim()}</td>
+                    </tr>
+                  ) : null}
                 </tbody>
               </table>
               <RiskGauge value={classify.gauge_before} label="위험도" />
